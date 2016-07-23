@@ -11,22 +11,26 @@ def _rl(a):
 def hist(data, **kwargs):
 	# data should be a list
 	# create a dict of how many times each object appears
-	c = Counter(data)
-	czip = list(c.items())
+	if type(data) is not list:
+		return(bool(print("data should be a list!")))
+	if type(data[0]) is list or type(data[0]) is tuple:
+		c = data
+	else:
+		c = list(Counter(data).items())
 
 	if "sort" in kwargs:
-		czip.sort(key=kwargs["sort"])
+		c.sort(key=kwargs["sort"])
 		kwargs.pop("sort")
 
 	if "amount" in kwargs:
-		czip = czip[-kwargs["amount"]:]
+		c = c[-kwargs["amount"]:]
 		kwargs.pop("amount")
 
 	if "map" in kwargs:
-		czip = list(map(kwargs["map"], czip))
+		c = list(map(kwargs["map"], c))
 		kwargs.pop("map")
 
-	bar([i[1] for i in czip], names=[i[0] for i in czip], **kwargs)
+	bar([i[1] for i in c], names=[i[0] for i in c], **kwargs)
 
 def pie(data, labels=None, legend=True, legend_title=None, axis="equal", **kwargs):
 	if labels:
