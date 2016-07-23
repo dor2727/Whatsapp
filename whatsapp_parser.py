@@ -73,7 +73,6 @@ class PATTERNS(enum.Enum):
 	DATE = re.compile(u'(' + _DATE_AND_TIME + " - .*)\n")
 P = utils.enum.enum_getter(PATTERNS)
 
-
 class Data(object):
 
 	###############################################
@@ -406,7 +405,7 @@ class Data(object):
 	# create a list of all the words
 	def get_all_words(self):
 		self.words = sum([
-			Text.WORDS_PATTERN.findall(i[MI("MESSAGE")])
+			P("WORDS").findall(i[MI("MESSAGE")])
 			for i in self.lines
 			if i[MI("TYPE")] == MT(0) 
 		], [])
@@ -433,12 +432,12 @@ class Data(object):
 
 	def get_non_letters(self):
 		words = '\n'.join(self.messages_by_user_combined)
-		words = re.sub(Text.WORDS_PATTERN              , '', words)
-		words = re.sub(Text.PUNCTUATIONS_PATTERN       , '', words)
-		words = re.sub(Text.HEBREW_PUNCTUATIONS_PATTERN, '', words)
-		words = re.sub(Text.NUMBER_PATTERN             , '', words)
-		words = re.sub('\s'                            , '', words)
-		words = re.sub(Text.OLD_UNIOCDE_PATTERN        , '', words)
+		words = re.sub(P("WORDS")              , '', words)
+		words = re.sub(P("PUNCTUATIONS")       , '', words)
+		words = re.sub(P("HEBREW_PUNCTUATIONS"), '', words)
+		words = re.sub(P("NUMBER")             , '', words)
+		words = re.sub('\s'                    , '', words)
+		words = re.sub(P("OLD_UNIOCDE")        , '', words)
 		return words
 	
 
@@ -478,7 +477,7 @@ def whos_the_funniest(data):
 			sum( # get the total amount of H
 				map( # count amount per result of findall
 					len, # count amount of H
-					Text.H_PATTERN.findall(i[1]) # get H out of all the messages
+					P("H").findall(i[1]) # get H out of all the messages
 				)
 			)
 		)
