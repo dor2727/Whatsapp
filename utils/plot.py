@@ -60,7 +60,7 @@ def bar(data, names=None, color="blue", title=None):
 	if title:
 		plt.title(title)
 
-	mpl.rc('font', family='Arial')
+	# mpl.rc('font', family='Arial')
 	# mpl.rc('font', **{
 	# 	'sans-serif' : 'Arial',
 	# 	'family' : 'sans-serif'
