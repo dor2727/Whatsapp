@@ -26,8 +26,8 @@ ax.add_patch(patches.Rectangle((6-.1,TICKYPOS-.05),.2,.2,
 ax.add_patch(patches.Rectangle((8-.1,TICKYPOS-.05),.2,.2,
                                fill=False,clip_on=False))
 
-lowerCorner = ax.transData.transform((.8,TICKYPOS-.2))
-upperCorner = ax.transData.transform((1.2,TICKYPOS+.2))
+lowerCorner = ax.transData.transform((.8,TICKYPOS-.225))
+upperCorner = ax.transData.transform((1.2,TICKYPOS+.225))
 
 bbox_image = BboxImage(Bbox([[lowerCorner[0],
                              lowerCorner[1]],
