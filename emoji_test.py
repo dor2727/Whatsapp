@@ -1,45 +1,56 @@
+import os
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib.image import BboxImage,imread
-from matplotlib.transforms import Bbox
+import matplotlib.image as mpimg
 
-# define where to put symbols vertically
-TICKYPOS = -.6
+WIDTH = 1/1.5
 
-fig = plt.figure()
-ax = fig.add_subplot(111)
-ax.plot(range(10))
+def _rl(a):
+	return range(len(a))
 
-# set ticks where your images will be
-ax.get_xaxis().set_ticks([2,4,6,8])
-# remove tick labels
-ax.get_xaxis().set_ticklabels([])
+EMOJI_FOLDER = os.path.expanduser("~/Projects/Whatsapp/emoji/images")
+
+EMOJI_PATH = EMOJI_FOLDER + "/%s.png"
+
+d = [['0x1f389', 81],
+	 ['0x1f61c', 83],
+	 ['0x1f633', 96],
+	 ['0x1f44d', 108],
+	 ['0x1f605', 112],
+	 ['0x1f603', 120],
+	 ['0x1f62c', 120],
+	 ['0x1f601', 136],
+	 ['0x1f602', 271],
+	 ['0x1f621', 423]]
 
 
-# add a series of patches to serve as tick labels
-ax.add_patch(patches.Circle((2,TICKYPOS),radius=.2,
-                            fill=True,clip_on=False))
-ax.add_patch(patches.Circle((4,TICKYPOS),radius=.2,
-                            fill=False,clip_on=False))
-ax.add_patch(patches.Rectangle((6-.1,TICKYPOS-.05),.2,.2,
-                               fill=True,clip_on=False))
-ax.add_patch(patches.Rectangle((8-.1,TICKYPOS-.05),.2,.2,
-                               fill=False,clip_on=False))
+data = [i[1] for i in d]
+names = [i[0][2:] for i in d]
+columns = len(data)
 
-lowerCorner = ax.transData.transform((.8,TICKYPOS-.225))
-upperCorner = ax.transData.transform((1.2,TICKYPOS+.225))
+# safety
+if not all(map(
+	lambda x: os.path.exists(EMOJI_PATH % x),
+	names
+)):
+	exit(bool(print("failed parsing emoji")))
 
-bbox_image = BboxImage(Bbox([[lowerCorner[0],
-                             lowerCorner[1]],
-                             [upperCorner[0],
-                             upperCorner[1]],
-                             ]),
-                       norm = None,
-                       origin=None,
-                       clip_on=False,
-                       )
+plt.subplot(columns,1,(1,columns - 1))
 
-bbox_image.set_data(imread('emoji/images/1f602.png'))
-ax.add_artist(bbox_image)
+plt.bar(_rl(data), data, WIDTH, color="blue")
+plt.title("emojis!!!")
+plt.xticks([])
+tmp = plt.axis()
+tmp2 = [tmp[0], tmp[1]-(1-WIDTH), tmp[2], tmp[3]]
+plt.axis(tmp2)
+
+for i in _rl(data):
+	img = mpimg.imread(EMOJI_PATH % names[i])
+	plt.subplot(
+		columns,
+		columns,
+		( columns * (columns-1) ) + 1 + i
+	)
+	plt.imshow(img)
+	plt.axis("off")
 
 plt.show()

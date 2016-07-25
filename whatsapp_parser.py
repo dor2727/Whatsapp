@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 
 from collections import Counter
 
-# http://unicode.org/emoji/charts/full-emoji-list.html
-
 
 SUPPORTED_HOURS_DELTA = [0.5, 1, 2]
 
