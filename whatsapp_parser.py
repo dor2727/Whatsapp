@@ -11,6 +11,7 @@ from collections import Counter
 
 SUPPORTED_HOURS_DELTA = [0.5, 1, 2]
 
+
 class MESSAGE_TYPE(enum.Enum):
 	MESSAGE = 0
 	MSG     = MESSAGE
