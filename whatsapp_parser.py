@@ -36,6 +36,11 @@ class MESSAGE_ITEMS(enum.Enum):
 MI = utils.enum.enum_getter(MESSAGE_ITEMS)
 
 class PATTERNS(enum.Enum):
+	# split messages by the date pattern
+	# "[date], [time] - .*"
+	_DATE_AND_TIME = "\d{1,2}/\d{1,2}/\d\d, \d\d\:\d\d"
+	DATE = re.compile(u'(' + _DATE_AND_TIME + " - .*)\n")
+
 	# hebrew[0] = \xd7\x90
 	# hebrew[0] = \u05d0
 	# hebrew[-1] = \xd7\xaa
@@ -55,8 +60,16 @@ class PATTERNS(enum.Enum):
 		"]+"
 	)
 
-	# GERESH + GERSHAYIM
-	HEBREW_PUNCTUATIONS = re.compile('[\u05f3\u05f4]+')
+	# HEBREW_PUNCTUATIONS = re.compile("[\u05f2\u05f3\u05f4]+")
+	HEBREW_PUNCTUATIONS = re.compile('[' + 
+		''.join([
+			'\u05f2', # HEBREW LIGATURE YIDDISH DOUBLE YOD
+			'\u05f3', # GERESH
+			'\u05f4'  # GERSHAYIM
+		])
+		 +
+		"]+"
+	)
 
 	OLD_UNIOCDE = re.compile("[\ue000-\uefff]+")
 
@@ -66,11 +79,29 @@ class PATTERNS(enum.Enum):
 	_H = "\u05d7"
 	H = re.compile("(HH+)".replace('H', _H))
 
-	# split messages by the date pattern
-	# "[date], [time] - .*"
-	_DATE_AND_TIME = "\d{1,2}/\d{1,2}/\d\d, \d\d\:\d\d"
-	DATE = re.compile(u'(' + _DATE_AND_TIME + " - .*)\n")
+	OTHER = re.compile(
+		'['
+		 +
+		''.join([
+			'\xd7', # multiplication sign
+			'\xe9', # e with accent
+		])
+		 +
+		']'
+	)
 P = utils.enum.enum_getter(PATTERNS)
+
+class UNICODE_PATTERNS(enum.Enum):
+	EXTENDED_ASCII = re.compile("[\u0080-\u00ff]+")
+	HEBREW = re.compile("[\u0590-\u05ff\ufb00-\ufb4f]+")
+	ARABIC = re.compile("[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+")
+	GENERAL_PUNCTUATION = re.compile("[\u2000-\u206f]+")
+	CURRENCY = re.compile("[\u20a0-\u20cf]+")
+	MATHEMATICAL_OPERATORS = re.compile("[\u2200-\u22ff]+")
+	PRIVATE_USE = re.compile("[\ue000-\uf8ff]+")
+	EMOTICONS = re.compile("[\U0001f600-\U0001f64f]+")
+	MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS = re.compile("[\U0001f300-\U0001f5ff]+")
+UP = utils.enum.enum_getter(UNICODE_PATTERNS)
 
 class Data(object):
 
@@ -178,11 +209,11 @@ class Data(object):
 				int(temp_hour[-2:])
 			)
 			self.lines.append((
-							temp_datetime, # date
-							user,
-							message,
-							message_type
-						))
+				temp_datetime, # date
+				user,
+				message,
+				message_type
+			))
 		return self.lines
 
 	# get the usernames list
@@ -429,16 +460,29 @@ class Data(object):
 	############         EMOJIS        ############
 	###############################################
 
-	def get_non_letters(self):
-		words = '\n'.join(self.messages_by_user_combined)
-		words = re.sub(P("WORDS")              , '', words)
-		words = re.sub(P("PUNCTUATIONS")       , '', words)
-		words = re.sub(P("HEBREW_PUNCTUATIONS"), '', words)
-		words = re.sub(P("NUMBER")             , '', words)
-		words = re.sub('\s'                    , '', words)
-		words = re.sub(P("OLD_UNIOCDE")        , '', words)
-		return words
+	def _get_non_letters(self, data=None):
+		if not data:
+			data = '\n'.join(self.messages_by_user_combined)
+		data = re.sub(P("WORDS")                  , '', data)
+		data = re.sub(P("PUNCTUATIONS")           , '', data)
+		data = re.sub(P("HEBREW_PUNCTUATIONS")    , '', data)
+		data = re.sub(P("NUMBER")                 , '', data)
+		data = re.sub(P("OLD_UNIOCDE")            , '', data)
+		data = re.sub(P("OTHER")                  , '', data)
+		data = re.sub('\s'                        , '', data)
+		data = re.sub(UP("EXTENDED_ASCII")        , '', data)
+		data = re.sub(UP("HEBREW")                , '', data)
+		data = re.sub(UP("ARABIC")                , '', data)
+		data = re.sub(UP("GENERAL_PUNCTUATION")   , '', data)
+		data = re.sub(UP("CURRENCY")              , '', data)
+		data = re.sub(UP("MATHEMATICAL_OPERATORS"), '', data)
+		data = re.sub(UP("PRIVATE_USE")           , '', data)
+		# data = re.sub(UP("EMOTICONS")             , '', data)
+		# data = re.sub(UP("MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS"), '', data)
+		return data
 	
+	def get_emoji_messages(self):
+		pass
 
 ###############################################
 ############        EXAMPLES       ############
