@@ -1,4 +1,5 @@
 import re
+import sys
 import time
 import enum
 import utils
@@ -34,6 +35,17 @@ class MESSAGE_ITEMS(enum.Enum):
 	TYPE    = 3
 	T       = TYPE
 MI = utils.enum.enum_getter(MESSAGE_ITEMS)
+
+class TIMESTEMP_ITEMS(enum.Enum):
+	USER          = 0
+	U             = USER
+	ABSOLUTE_TIME = 1
+	ABSOLUTE      = ABSOLUTE_TIME
+	A             = ABSOLUTE_TIME
+	RELATIVE_TIME = 2
+	RELATIVE      = RELATIVE_TIME
+	R             = RELATIVE_TIME
+TI = utils.enum.enum_getter(TIMESTEMP_ITEMS)
 
 class PATTERNS(enum.Enum):
 	# split messages by the date pattern
@@ -154,6 +166,9 @@ class Data(object):
 		self.get_most_common_words()
 		if debug:
 			print("    [*] %.3f get_most_common_words done" % (time.time() - start))
+		self.get_timestemps()
+		if debug:
+			print("    [*] %.3f get_timestemps done" % (time.time() - start))
 		if debug:
 			print("[*] loaded in %s seconds" % (time.time() - start))
 
@@ -482,7 +497,60 @@ class Data(object):
 		return data
 	
 	def get_emoji_messages(self):
+		return self.get_messages(utils.emoji.PATTERN)
+
+	def get_all_emojis(self):
+		return re.findall(utils.emoji.PATTERN, '\n'.join(self.messages_by_user_combined))
+	def plot_all_emojis(self, amount=5):
+		# a = wp.d.get_all_emojis()
+		# b = Counter(a)
+		# c = list(b.items())
+		# d = list(map(lambda x:[wp.utils.emoji.emoji_to_hex(x[0]), x[1]], c))
+		data = list(map(
+			lambda x: [ utils.emoji.emoji_to_hex(x[0]), x[1] ],
+			utils.counter(self.get_all_emojis())
+		))
+		return utils.plot.emoji_bar(
+			data,
+			amount=amount,
+			sort=lambda x: x[1], # sort by the value of the word and not the amount
+		)
+
+
+	def get_all_user_emojis(self):
 		pass
+
+	###############################################
+	############         CHATS         ############
+	###############################################
+
+	# return a list of (sender, absolute_time, relative_time)
+	def get_timestemps(self):
+		self.timestemps = []
+		for index, x in enumerate(self.lines):
+			if index:
+				diff = self.lines[index][MI("DATE")] - self.lines[index - 1][MI("DATE")]
+			else:
+				diff = datetime.timedelta(0)
+			self.timestemps.append([
+				x[MI("USER")],
+				x[MI("DATE")],
+				diff
+			])
+		return self.timestemps
+
+	def _print_timestemp(self, index, **kwargs):
+		if type(index) is int:
+			index = [index]
+		if "__iter__" not in dir(index):
+			return(bool(print("x needs to be int or list")))
+		for x in index:
+			r = self.timestemps[x][TI("RELATIVE")]
+			print("%s : %s : %s" % (
+				"%-20s" % self.timestemps[x][TI("USER")],
+				self.timestemps[x][TI("ABSOLUTE")].strftime("%Y/%m/%d_%H:%M"),
+				"%02dw_%02dd_%02d:%02d" % (r.days // 7, r.days % 7, r.seconds // (60*60), r.seconds // 60 % 60)
+			), **kwargs)
 
 ###############################################
 ############        EXAMPLES       ############

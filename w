@@ -1,1 +1,1 @@
-data/chat
+/home/me/Dropbox/Projects/Whatsapp/data/chat_Niko
