@@ -1,0 +1,16 @@
+if day_changes and diff.hours >= 3:
+	new = True
+if diff.minutes < 30:
+	new = False
+if diff.total_hours >= 24:
+	new = True
+if diff.hours >= 7:
+	new = True
+
+if message.time in range 10PM - 8AM:
+	append message to next chat_block
+
+if len(chat_block) == 1 and diff.hours < 5:
+	append message to next chat_block
+
+	

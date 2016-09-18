@@ -3,6 +3,7 @@ import sys
 import time
 import enum
 import utils
+import numpy
 import string
 import datetime
 import matplotlib.pyplot as plt
@@ -133,9 +134,9 @@ class Data(object):
 		self.get_users()
 		if debug:
 			print("        [*] %.3f get_users done" % (time.time() - debug_time))
-		self.get_all_words()
+		self.create_all_words()
 		if debug:
-			print("        [*] %.3f get_all_words done" % (time.time() - debug_time))
+			print("        [*] %.3f create_all_words done" % (time.time() - debug_time))
 
 	def init_all(self, debug=False):
 		start = time.time()
@@ -148,21 +149,21 @@ class Data(object):
 		
 		if debug:
 			print("    [*] %.3f init done" % (time.time() - start))
-		self.get_user_message_metadata()
+		self.create_user_message_metadata()
 		if debug:
-			print("    [*] %.3f get_user_message_metadata done" % (time.time() - start))
-		self.get_user_message_metadata(True)
+			print("    [*] %.3f create_user_message_metadata done" % (time.time() - start))
+		self.create_user_message_metadata(True)
 		if debug:
-			print("    [*] %.3f get_user_message_metadata done" % (time.time() - start))
-		self.get_all_user_messages()
+			print("    [*] %.3f create_user_message_metadata done" % (time.time() - start))
+		self.create_all_user_messages()
 		if debug:
-			print("    [*] %.3f get_all_user_messages done" % (time.time() - start))
-		self.get_user_wpm()
+			print("    [*] %.3f create_all_user_messages done" % (time.time() - start))
+		self.create_user_wpm()
 		if debug:
-			print("    [*] %.3f get_user_wpm done" % (time.time() - start))
-		self.get_user_hpm()
+			print("    [*] %.3f create_user_wpm done" % (time.time() - start))
+		self.create_user_hpm()
 		if debug:
-			print("    [*] %.3f get_user_hpm done" % (time.time() - start))
+			print("    [*] %.3f create_user_hpm done" % (time.time() - start))
 		self.get_most_common_words()
 		if debug:
 			print("    [*] %.3f get_most_common_words done" % (time.time() - start))
@@ -288,7 +289,7 @@ class Data(object):
 	###############################################
 
 	# calculate amount of messages and percentage out of total messages
-	def get_user_message_metadata(self, media=False):
+	def create_user_message_metadata(self, media=False):
 		amount_of_user_messages = [
 			len([
 				i for i in self.lines
@@ -314,7 +315,7 @@ class Data(object):
 		# return [user, #messages, %messages]
 
 	# get all the messages that the user sent
-	def get_all_user_messages(self):
+	def create_all_user_messages(self):
 		self.messages_by_user = [
 			[
 				i[MI('MESSAGE')]
@@ -335,19 +336,25 @@ class Data(object):
 		return self.messages_by_user
 
 	def get_messages(self, message_filter):
+		# validate the message_filter parameter
+		# a function
 		if "__call__" in dir(message_filter):
 			filter_function = message_filter
+		# not a function -> needs to create one
 		else:
+			# already some re type
 			if "findall" in dir(message_filter):
 				re_pattern = message_filter
+			# string
 			elif type(message_filter) is str:
 				re_pattern = re.compile(message_filter)
+			# bytes
 			elif type(message_filter) is bytes:
 				re_pattern = re.compile(message_filter.decode("utf8"))
 			else:
 				return(bool(print("Unknown message_filter type")))
 
-			filter_function = lambda x: len(re_pattern.findall( x[MI("MESSAGE")] ))
+			filter_function = lambda x: bool(re_pattern.findall( x[MI("MESSAGE")] ))
 
 		return list(filter(
 			filter_function,
@@ -389,7 +396,7 @@ class Data(object):
 	###############################################
 
 	# get Words Per Message
-	def get_user_wpm(self, ignore_short_messages=0):
+	def create_user_wpm(self, ignore_short_messages=0):
 		if not self.__dict__.get("messages_by_user"):
 			get_all_user_messages(self.lines, self.users)
 		self.user_wpm = [
@@ -417,7 +424,7 @@ class Data(object):
 		return self.user_wpm
 
 	# get H Per Message
-	def get_user_hpm(self):
+	def create_user_hpm(self):
 		if not self.__dict__.get("messages_by_user_combined"):
 			get_all_user_messages()
 				# H Per Message
@@ -448,18 +455,17 @@ class Data(object):
 		return all_user_h, user_h_messages, self.user_h_amount, self.user_hpm, self.user_hpd
 
 	# create a list of all the words
-	def get_all_words(self):
+	def create_all_words(self):
 		self.words = sum([
 			P("WORDS").findall(i[MI("MESSAGE")])
 			for i in self.lines
 			if i[MI("TYPE")] == MT(0) 
 		], [])
+		self.words_histogram = utils.counter(self.words)
 		return self.words
 
 	def get_most_common_words(self, amount=10, display=False):
-		self.words_histogram = Counter(self.words)
-
-		words = list(self.words_histogram.items())
+		words = list(self.words_histogram) # copy
 
 		words.sort(key=lambda x: x[1]) # sort by the word
 
@@ -516,7 +522,6 @@ class Data(object):
 			sort=lambda x: x[1], # sort by the value of the word and not the amount
 		)
 
-
 	def get_all_user_emojis(self):
 		pass
 
@@ -530,6 +535,8 @@ class Data(object):
 		for index, x in enumerate(self.lines):
 			if index:
 				diff = self.lines[index][MI("DATE")] - self.lines[index - 1][MI("DATE")]
+				if diff < datetime.timedelta(0):
+					diff = datetime.timedelta(0)
 			else:
 				diff = datetime.timedelta(0)
 			self.timestemps.append([
@@ -551,6 +558,67 @@ class Data(object):
 				self.timestemps[x][TI("ABSOLUTE")].strftime("%Y/%m/%d_%H:%M"),
 				"%02dw_%02dd_%02d:%02d" % (r.days // 7, r.days % 7, r.seconds // (60*60), r.seconds // 60 % 60)
 			), **kwargs)
+
+	###############################################
+	############         CHATS         ############
+	###############################################
+
+	def get_all_features(self):
+		if len(self.users) != 2:
+			return(bool(print("len(users) != 2")))
+		features = {}
+
+		##### message ratio #####
+		
+		features["message ratio"]      = numpy.divide(*self.user_message_amount)
+		features["media ratio"]        = numpy.divide(*self.user_media_amount)
+		features["words ratio"] = numpy.divide(*list(map(len, self.messages_by_user_combined)))
+		
+		_long_messages = self.get_messages(lambda x:len(x[MI('M')].split()>=10))
+		_long_messages_amount_per_user = list(map(
+			# iterate all the users
+			# and count how many long messages each of them has
+			lambda u: len(list(filter(
+				# iterate all the long messages
+				# and filter out only messages by the user
+				lambda m: m[MI('U')] == u,
+				_long_messages
+			))),
+			self.users
+		))
+		features["long message ratio"] = numpy.divide(*_long_messages_amount_per_user)
+		del _long_messages
+		del _long_messages_amount_per_user
+
+		##### laugher #####
+
+		features["h / message"]
+		features["messages with h"]
+		features["amount of h after media"]
+
+		##### basic time statistics #####
+
+		features["most active hours"]
+		features["most active days"]
+		features["chat timespan"]
+		features["message / day"]
+		features["message / week"]
+		features["message / month"]
+		features["media / day"]
+		features["media / week"]
+		features["media / month"]
+		features["words / day"]
+		features["words / week"]
+		features["words / month"]
+
+		##### advanced time statistics #####
+
+		##### emoji #####
+		
+		features["emoji / message"] = list(map(
+			lambda x: x,
+			self.users
+		))
 
 ###############################################
 ############        EXAMPLES       ############
