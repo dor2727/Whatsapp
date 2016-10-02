@@ -11,9 +11,6 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 
-SUPPORTED_HOURS_DELTA = [0.5, 1, 2]
-
-
 class MESSAGE_TYPE(enum.Enum):
 	MESSAGE = 0
 	MSG     = MESSAGE
@@ -26,27 +23,18 @@ class MESSAGE_TYPE(enum.Enum):
 MT = utils.enum.enum_getter(MESSAGE_TYPE)
 
 class MESSAGE_ITEMS(enum.Enum):
-	DATE    = 0
-	D       = DATE
-	USER    = 1
-	U       = USER
-	MESSAGE = 2
-	MSG     = MESSAGE
-	M       = MESSAGE
-	TYPE    = 3
-	T       = TYPE
+	DATE     = 0
+	D        = DATE
+	USER     = 1
+	U        = USER
+	MESSAGE  = 2
+	MSG      = MESSAGE
+	M        = MESSAGE
+	TYPE     = 3
+	T        = TYPE
+	RELATIVE = 4
+	R        = RELATIVE
 MI = utils.enum.enum_getter(MESSAGE_ITEMS)
-
-class TIMESTEMP_ITEMS(enum.Enum):
-	USER          = 0
-	U             = USER
-	ABSOLUTE_TIME = 1
-	ABSOLUTE      = ABSOLUTE_TIME
-	A             = ABSOLUTE_TIME
-	RELATIVE_TIME = 2
-	RELATIVE      = RELATIVE_TIME
-	R             = RELATIVE_TIME
-TI = utils.enum.enum_getter(TIMESTEMP_ITEMS)
 
 class PATTERNS(enum.Enum):
 	# split messages by the date pattern
@@ -181,7 +169,7 @@ class Data(object):
 		self.data = a.decode("utf8")
 		return self.data
 
-	# returns [datetime, user, message, message_type]
+	# returns [datetime, user, message, message_type, Relative_time]
 	def parse_lines(self):
 		"""
 		parses the data and splits into messages
@@ -202,6 +190,7 @@ class Data(object):
 
 		self.lines_raw = P("DATE").findall(self.data)
 
+		last_time = None
 		self.lines = []
 		for i in self.lines_raw:
 			date, rest = i.split(" - ", 1)
@@ -224,11 +213,21 @@ class Data(object):
 				int(temp_hour[:2]),
 				int(temp_hour[-2:])
 			)
+
+			if last_time:
+				diff = temp_datetime - last_time
+				if diff < datetime.timedelta(0):
+					diff = datetime.timedelta(0)
+			else:
+				diff = datetime.timedelta(0)
+			last_time = temp_datetime
+
 			self.lines.append((
 				temp_datetime, # date
 				user,
 				message,
-				message_type
+				message_type,
+				diff
 			))
 		return self.lines
 
@@ -464,13 +463,23 @@ class Data(object):
 		self.words_histogram = utils.counter(self.words)
 		return self.words
 
-	def get_most_common_words(self, amount=10, display=False):
+	def get_most_common_words(self, amount=10, display=False, top_first=False, multiple_lines=False):
 		words = list(self.words_histogram) # copy
 
 		words.sort(key=lambda x: x[1]) # sort by the word
 
 		if amount:
 			words = words[-amount:]
+
+		if top_first:
+			words = words[::-1]
+
+		# if multiple_lines:
+		# 	amount_per_line = multiple_lines // (max(map(
+		# 		lambda x: len("%04d - %s" % (i[1], i[0][::-1])),
+		# 		words
+		# 	)) + 2)
+
 
 		if display:
 			print('\n'.join(["%04d - %s" % (i[1], i[0][::-1]) for i in words]))
@@ -505,9 +514,15 @@ class Data(object):
 	def get_emoji_messages(self):
 		return self.get_messages(utils.emoji.PATTERN)
 
-	def get_all_emojis(self):
-		return re.findall(utils.emoji.PATTERN, '\n'.join(self.messages_by_user_combined))
-	def plot_all_emojis(self, amount=5):
+	def get_all_emojis(self, combined=True):
+		if combined:
+			return re.findall(utils.emoji.PATTERN, '\n'.join(self.messages_by_user_combined))
+		else:
+			return [
+				re.findall(utils.emoji.PATTERN, i)
+				for i in self.messages_by_user_combined
+			]
+	def plot_emojis(self, amount=5):
 		# a = wp.d.get_all_emojis()
 		# b = Counter(a)
 		# c = list(b.items())
@@ -521,6 +536,26 @@ class Data(object):
 			amount=amount,
 			sort=lambda x: x[1], # sort by the value of the word and not the amount
 		)
+	def plot_emojis_by_users(self, amount=5):
+		if len(self.users) != 2:
+			return(bool(print("More than 2 users are not allowed!")))
+		data = map(
+			utils.counter,
+			self.get_all_emojis(False)
+		)
+		data = map(
+			lambda x: [
+				[ utils.emoji.emoji_to_hex(i[0]), i[1] ]
+				for i in x
+			],
+			data
+		)
+		return utils.plot.emoji_bar_2(
+			list(data),
+			amount=amount,
+			sort=lambda x: x[1], # sort by the value of the word and not the amount
+			title=self._users_first_name
+		)
 
 	def get_all_user_emojis(self):
 		pass
@@ -529,24 +564,9 @@ class Data(object):
 	############         CHATS         ############
 	###############################################
 
-	# return a list of (sender, absolute_time, relative_time)
-	def get_timestemps(self):
-		self.timestemps = []
-		for index, x in enumerate(self.lines):
-			if index:
-				diff = self.lines[index][MI("DATE")] - self.lines[index - 1][MI("DATE")]
-				if diff < datetime.timedelta(0):
-					diff = datetime.timedelta(0)
-			else:
-				diff = datetime.timedelta(0)
-			self.timestemps.append([
-				x[MI("USER")],
-				x[MI("DATE")],
-				diff
-			])
-		return self.timestemps
-
-	def _print_timestemp(self, index, **kwargs):
+	def _print_timestemp(self, index=None, **kwargs):
+		if index is None:
+			index = range(len(self.lines))
 		if type(index) is int:
 			index = [index]
 		if "__iter__" not in dir(index):
@@ -558,6 +578,10 @@ class Data(object):
 				self.timestemps[x][TI("ABSOLUTE")].strftime("%Y/%m/%d_%H:%M"),
 				"%02dw_%02dd_%02d:%02d" % (r.days // 7, r.days % 7, r.seconds // (60*60), r.seconds // 60 % 60)
 			), **kwargs)
+
+	def _divide_to_chat_blocks(self):
+		for index, x in enumerate(self.lines):
+			pass
 
 	###############################################
 	############         CHATS         ############

@@ -8,9 +8,13 @@ if diff.hours >= 7:
 	new = True
 
 if message.time in range 10PM - 8AM:
-	append message to next chat_block
+	combine this message-chat-block to the next chat-block
 
 if len(chat_block) == 1 and diff.hours < 5:
 	append message to next chat_block
 
-	
+
+
+def timestemp_to_csv(username):
+	a = [','.join((i[0].split()[0], str(i[2].total_seconds()))) for i in wp.d.get_timestemps()]
+	print('\n'.join(a), file=open("timestemp/%s.csv"%username, "w"))
