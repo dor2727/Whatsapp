@@ -110,13 +110,13 @@ class Data(object):
 	############          INIT         ############
 	###############################################
 	
-	def init(self, debug=False, debug_time=None):
+	def init(self, debug=False, debug_time=None, exclude_system=True):
 		if debug and not debug_time:
 			debug_time = time.time()
 		self.read_data()
 		if debug:
 			print("        [*] %.3f read_data done" % (time.time() - debug_time))
-		self.parse_lines()
+		self.parse_lines(exclude_system=True)
 		if debug:
 			print("        [*] %.3f parse_lines done" % (time.time() - debug_time))
 		self.get_users()
@@ -126,12 +126,12 @@ class Data(object):
 		if debug:
 			print("        [*] %.3f create_all_words done" % (time.time() - debug_time))
 
-	def init_all(self, debug=False):
+	def init_all(self, debug=False, exclude_system=True):
 		start = time.time()
 		if debug:
 			print("[*] init_all started")
 			print("    [*] %.3f init started" % (time.time() - start))
-			self.init(True, start)
+			self.init(True, start, exclude_system=True)
 		else:
 			self.init()
 		
@@ -155,9 +155,6 @@ class Data(object):
 		self.get_most_common_words()
 		if debug:
 			print("    [*] %.3f get_most_common_words done" % (time.time() - start))
-		self.get_timestemps()
-		if debug:
-			print("    [*] %.3f get_timestemps done" % (time.time() - start))
 		if debug:
 			print("[*] loaded in %s seconds" % (time.time() - start))
 
@@ -170,7 +167,7 @@ class Data(object):
 		return self.data
 
 	# returns [datetime, user, message, message_type, Relative_time]
-	def parse_lines(self):
+	def parse_lines(self, exclude_system=True):
 		"""
 		parses the data and splits into messages
 		message can be one of 3 types
@@ -198,6 +195,8 @@ class Data(object):
 				user, message = rest.split(": ", 1)
 				# message_type = 1 if message == "<Media omitted>" else 0
 				message_type = MT(int(message == "<Media omitted>"))
+			elif exclude_system:
+				continue
 			else:
 				user = "system"
 				message = rest
@@ -580,8 +579,99 @@ class Data(object):
 			), **kwargs)
 
 	def _divide_to_chat_blocks(self):
-		for index, x in enumerate(self.lines):
-			pass
+		#############################
+		#### division by time    ####
+		#############################
+		#### utility functions   ####
+		#############################
+		timedelta_in_minutes = lambda x: x[MI("RELATIVE")].total_seconds() / 60
+		tim = timedelta_in_minutes
+		# night is after 10PM or before 8AM
+		# so !(day) -> !(after 8AM and before 10PM)
+		is_night = lambda x: not 8 < x[MI("DATE")].hour < 22
+
+
+		#############################
+		#### division by time    ####
+		#############################
+		#### main loop           ####
+		#############################
+		chats = []
+		current_chat = []
+		combine_to_next_chat_block = False
+		for line in self.lines:
+			# less then half an hour apart
+			if tim(line) < 60:
+				current_chat.append(line)
+			# more then a day apart
+			elif 24*60 < tim(line):
+				chats.append(current_chat)
+				current_chat = [line]
+			# default
+			else:
+				chats.append(current_chat)
+				current_chat = [line]
+
+		self.raw_chats = chats[:]
+
+		#############################
+		#### division by sender  ####
+		#############################
+		#### utility functions   ####
+		#############################
+		def amount_of_senders(x):
+			return len(set( i[MI("USER")] for i in x ))
+		def is_single_sender(x):
+			return amount_of_senders(x) == 1
+		def is_single_sender_and_not_ignored(index):
+			"""
+			if current_chat is single_sender and next_chat[0].timedelta > 24h - dont append; the message is ignored
+			note - this does not handle the case where the single-sender chat-block should be added to the previous
+				chat, though this is less common, and I think that I can handle this statistical flaw
+			"""
+			# is the current chat-block a single-sender-chat-block?
+			if is_single_sender(chats[index]):
+				# is the next message more than 24h apart?
+				if chats[index+1][0][MI("RELATIVE")].total_seconds() > 24*60*60:
+					# the other side ignored your message
+					return False
+				else:
+					# this is a normal single-sender chat-block
+					return True
+			else:
+				# this is not a single-sender chat-block
+				return False
+
+
+		#############################
+		#### division by sender  ####
+		#############################
+		#### main loop           ####
+		#############################
+		# the last chat is a special case and will be treated later
+
+		chats_to_append_to_next = list(map(
+				is_single_sender_and_not_ignored,
+				range(len(chats) - 1) # remove the last chat
+			)) + [False]
+
+
+		index = 0
+		while index < len(chats_to_append_to_next) - 1:
+			if chats_to_append_to_next[index]:
+				# combine the current and next chats to a single chat
+				chats[index : index+2] = [chats[index] + chats[index+1]]
+				chats_to_append_to_next.pop(index)
+				index -= 1
+			index += 1
+
+		# the last chat is a special case since it does not have a next chat
+		# thus, if the last chat is a single-sender, it will be combined with
+		# the previous chat
+		if is_single_sender(chats[-1]):
+			chats[-2:] = [chats[-2]+chats[-1]]
+
+		self.chats = chats
 
 	###############################################
 	############         CHATS         ############
@@ -719,5 +809,5 @@ if __name__ == '__main__':
 	pass
 else:
 	d = Data()
-	d.init_all(True)
+	d.init_all(debug=True, exclude_system=True)
 	

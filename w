@@ -1,1 +1,1 @@
-/home/me/Dropbox/Projects/Whatsapp/data/chat_Niko
+/home/me/Dropbox/Projects/Whatsapp/data/chat_Dana
