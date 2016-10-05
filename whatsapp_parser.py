@@ -580,16 +580,80 @@ class Data(object):
 
 	def _divide_to_chat_blocks(self):
 		#############################
-		#### division by time    ####
-		#############################
 		#### utility functions   ####
 		#############################
+
+		#### division by time    ####
+
 		timedelta_in_minutes = lambda x: x[MI("RELATIVE")].total_seconds() / 60
 		tim = timedelta_in_minutes
-		# night is after 10PM or before 8AM
-		# so !(day) -> !(after 8AM and before 10PM)
-		is_night = lambda x: not 8 < x[MI("DATE")].hour < 22
 
+		def is_night(x):
+			"""
+			on a normal work day, the average person sleeps at 10PM
+			and wakes up at 8AM (or at least something like that..
+			I haven't done any research in this topic)
+			on a weekend day, the average person wakes up somewhere
+			until 11AM
+			thus, night >= 10PM or night <= 8AM
+			which means that 8AM < day < 10PM
+			which can be expressed as
+				night = not (8AM < time < 10PM)
+			# 8AM will be replaced by 11PM in case of a weekend
+			"""
+			_WEEKEND = [4,5] # 0 is monday, 4,5 is friday,saturday
+			return not (11 if x[MI("DATE")].weekday() in _WEEKEND else 8) < x[MI("DATE")].hour < 22
+		def is_after_night(x):
+			"""
+			allow the message to be up to 2 hours after the wake-up
+			Other ideas : 
+				check if this is a different user
+				check if there is a reasonable time difference
+			"""
+			_WEEKEND = [4,5] # 0 is monday, 4,5 is friday,saturday
+			morning = (11 if x[MI("DATE")].weekday() in _WEEKEND else 8)
+			morning += 2
+			after_night = (
+				x[MI("DATE")].hour < morning
+				 or
+				x[MI("DATE")].hour > 22
+			)
+			return after_night
+
+		#### division by sender  ####
+
+		def amount_of_senders(x):
+			return len(set( i[MI("USER")] for i in x ))
+		def is_single_sender(x):
+			return amount_of_senders(x) == 1
+		def is_being_ignored(index):
+			"""
+			checks whether the first message of the next chat block is more than 24h apart
+			checks whether the first message of the next chat block is from the same
+				user as the last message of the current chat block
+			"""
+			# this is the first message, it can't be ignored
+			if not index:
+				return False
+
+			# check how far is the first message of the next chat block
+			if chats[index+1][0][MI("RELATIVE")].total_seconds() > 24*60*60:
+				# the other side ignored your message
+				ignored_by_time = True
+			else:
+				# this is a normal single-sender chat-block
+				ignored_by_time = False
+
+			# check if the sender of the end of this chat block is
+			# the same as the sender of the beginning of the next chat block
+			if is_single_sender((chats[index][-1], chats[index+1][0])):
+				# this is the same person after some delay
+				ignored_by_sender = True
+			else:
+				# this is the other person answering
+				ignored_by_sender = False
+
+			return ignored_by_time or ignored_by_sender
 
 		#############################
 		#### division by time    ####
@@ -598,8 +662,7 @@ class Data(object):
 		#############################
 		chats = []
 		current_chat = []
-		combine_to_next_chat_block = False
-		for line in self.lines:
+		for i, line in enumerate(self.lines):
 			# less then half an hour apart
 			if tim(line) < 60:
 				current_chat.append(line)
@@ -607,6 +670,21 @@ class Data(object):
 			elif 24*60 < tim(line):
 				chats.append(current_chat)
 				current_chat = [line]
+			# sent while the other person was sleeping
+			elif (
+				i
+				 and
+				is_night(self.lines[i-1])
+				 and
+				is_after_night(line)
+				 and
+				not is_single_sender((line, self.lines[i-1]))
+			):
+				print("[*] night %d" % i)
+				print_line(self.lines[i-1])
+				print_line(self.lines[i  ])
+				print_line(self.lines[i+1])
+				current_chat.append(line)
 			# default
 			else:
 				chats.append(current_chat)
@@ -617,44 +695,30 @@ class Data(object):
 		#############################
 		#### division by sender  ####
 		#############################
-		#### utility functions   ####
-		#############################
-		def amount_of_senders(x):
-			return len(set( i[MI("USER")] for i in x ))
-		def is_single_sender(x):
-			return amount_of_senders(x) == 1
-		def is_single_sender_and_not_ignored(index):
-			"""
-			if current_chat is single_sender and next_chat[0].timedelta > 24h - dont append; the message is ignored
-			note - this does not handle the case where the single-sender chat-block should be added to the previous
-				chat, though this is less common, and I think that I can handle this statistical flaw
-			"""
-			# is the current chat-block a single-sender-chat-block?
-			if is_single_sender(chats[index]):
-				# is the next message more than 24h apart?
-				if chats[index+1][0][MI("RELATIVE")].total_seconds() > 24*60*60:
-					# the other side ignored your message
-					return False
-				else:
-					# this is a normal single-sender chat-block
-					return True
-			else:
-				# this is not a single-sender chat-block
-				return False
-
-
-		#############################
-		#### division by sender  ####
-		#############################
 		#### main loop           ####
 		#############################
 		# the last chat is a special case and will be treated later
 
+		"""
+		if current_chat is single_sender, it is possible that is should be appended to the
+		next chat-block. Another criteria stands in the way, though.
+		what if the last message in the current chat-block is being ignored?
+		it can be verified in 2 ways
+			if the next message is more than 24h away
+			if the next message is from the last sender
+				(we can assume that if the messages are on different
+				 chat blocks, they are far enough from each other)
+		note - this does not handle the case where the single-sender chat-block should be added to the previous
+			chat, though this is less common, and I think that I can handle this statistical flaw
+		"""
 		chats_to_append_to_next = list(map(
-				is_single_sender_and_not_ignored,
+				lambda index: (
+					is_single_sender(chats[index])
+					 and
+					not is_being_ignored(index)
+				),
 				range(len(chats) - 1) # remove the last chat
 			)) + [False]
-
 
 		index = 0
 		while index < len(chats_to_append_to_next) - 1:
@@ -672,6 +736,19 @@ class Data(object):
 			chats[-2:] = [chats[-2]+chats[-1]]
 
 		self.chats = chats
+
+	def _print_chat(self, i):
+		if type(i) is int:
+			i = self.chats[i]
+		print('\n'.join(map(
+			lambda x: "%-6s - %s (%6.2f) - %s" % (
+				x[1].split()[0], # sender
+				x[0].strftime("%Y/%m/%d_%H:%M"), # date
+				x[4].total_seconds() / 60**2, # diff
+				x[2][::-1] # message
+			),
+			i
+		)))
 
 	###############################################
 	############         CHATS         ############
@@ -733,6 +810,14 @@ class Data(object):
 			lambda x: x,
 			self.users
 		))
+
+def print_line(x):
+	print("%-6s - %s (%6.2f) - %s" % (
+		x[1].split()[0], # sender
+		x[0].strftime("%Y/%m/%d_%H:%M"), # date
+		x[4].total_seconds() / 60**2, # diff
+		x[2][::-1] # message
+	))
 
 ###############################################
 ############        EXAMPLES       ############
