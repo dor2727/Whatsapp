@@ -1,1 +1,1 @@
-/home/me/Dropbox/Projects/Whatsapp/data/chat_Shaked
+/home/me/Projects/Whatsapp_data/chat_Dana

@@ -104,6 +104,28 @@ class UNICODE_PATTERNS(enum.Enum):
 	MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS = re.compile("[\U0001f300-\U0001f5ff]+")
 UP = utils.enum.enum_getter(UNICODE_PATTERNS)
 
+
+def _get_non_letters(self, data):
+	# data = '\n'.join(self.messages_by_user_combined)
+	data = re.sub(P("WORDS")                  , '', data)
+	data = re.sub(P("PUNCTUATIONS")           , '', data)
+	data = re.sub(P("HEBREW_PUNCTUATIONS")    , '', data)
+	data = re.sub(P("NUMBER")                 , '', data)
+	data = re.sub(P("OLD_UNIOCDE")            , '', data)
+	data = re.sub(P("OTHER")                  , '', data)
+	data = re.sub('\s'                        , '', data)
+	data = re.sub(UP("EXTENDED_ASCII")        , '', data)
+	data = re.sub(UP("HEBREW")                , '', data)
+	data = re.sub(UP("ARABIC")                , '', data)
+	data = re.sub(UP("GENERAL_PUNCTUATION")   , '', data)
+	data = re.sub(UP("CURRENCY")              , '', data)
+	data = re.sub(UP("MATHEMATICAL_OPERATORS"), '', data)
+	data = re.sub(UP("PRIVATE_USE")           , '', data)
+	# I acctually don't remember why did I comment these lines
+	# data = re.sub(UP("EMOTICONS")             , '', data)
+	# data = re.sub(UP("MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS"), '', data)
+	return data
+
 class Data(object):
 
 	###############################################
@@ -113,15 +135,15 @@ class Data(object):
 	def init(self, debug=False, debug_time=None, exclude_system=True):
 		if debug and not debug_time:
 			debug_time = time.time()
-		self.read_data()
+		self._read_data()
 		if debug:
-			print("        [*] %.3f read_data done" % (time.time() - debug_time))
+			print("        [*] %.3f _read_data done" % (time.time() - debug_time))
 		self.parse_lines(exclude_system=True)
 		if debug:
 			print("        [*] %.3f parse_lines done" % (time.time() - debug_time))
-		self.get_users()
+		self.create_users()
 		if debug:
-			print("        [*] %.3f get_users done" % (time.time() - debug_time))
+			print("        [*] %.3f create_users done" % (time.time() - debug_time))
 		self.create_all_words()
 		if debug:
 			print("        [*] %.3f create_all_words done" % (time.time() - debug_time))
@@ -152,14 +174,14 @@ class Data(object):
 		self.create_user_hpm()
 		if debug:
 			print("    [*] %.3f create_user_hpm done" % (time.time() - start))
-		self.get_most_common_words()
+		self.create_chat_blocks()
 		if debug:
-			print("    [*] %.3f get_most_common_words done" % (time.time() - start))
+			print("    [*] %.3f create_chat_blocks done" % (time.time() - start))
+		
 		if debug:
 			print("[*] loaded in %s seconds" % (time.time() - start))
 
-
-	def read_data(self, file_name='w'):
+	def _read_data(self, file_name='w'):
 		f = open(file_name, 'rb')
 		a = f.read()
 		f.close()
@@ -231,7 +253,7 @@ class Data(object):
 		return self.lines
 
 	# get the usernames list
-	def get_users(self, first_name_only=False, anonymize=False):
+	def create_users(self, first_name_only=False, anonymize=False):
 		"""
 		gets a unique list of all the users
 		This functions' flags change the value of self.users and the return value
@@ -280,8 +302,6 @@ class Data(object):
 			if first_name_only:
 				self.users = self._users_first_name[:]
 		
-		return self.users
-
 	###############################################
 	############        MESSAGES       ############
 	###############################################
@@ -331,6 +351,7 @@ class Data(object):
 				self.messages_by_user
 			)
 		)
+		self.user_words_amount = list(map(len, self.messages_by_user_combined))
 		return self.messages_by_user
 
 	def get_messages(self, message_filter):
@@ -488,39 +509,22 @@ class Data(object):
 	###############################################
 	############         EMOJIS        ############
 	###############################################
-
-	def _get_non_letters(self, data=None):
-		if not data:
-			data = '\n'.join(self.messages_by_user_combined)
-		data = re.sub(P("WORDS")                  , '', data)
-		data = re.sub(P("PUNCTUATIONS")           , '', data)
-		data = re.sub(P("HEBREW_PUNCTUATIONS")    , '', data)
-		data = re.sub(P("NUMBER")                 , '', data)
-		data = re.sub(P("OLD_UNIOCDE")            , '', data)
-		data = re.sub(P("OTHER")                  , '', data)
-		data = re.sub('\s'                        , '', data)
-		data = re.sub(UP("EXTENDED_ASCII")        , '', data)
-		data = re.sub(UP("HEBREW")                , '', data)
-		data = re.sub(UP("ARABIC")                , '', data)
-		data = re.sub(UP("GENERAL_PUNCTUATION")   , '', data)
-		data = re.sub(UP("CURRENCY")              , '', data)
-		data = re.sub(UP("MATHEMATICAL_OPERATORS"), '', data)
-		data = re.sub(UP("PRIVATE_USE")           , '', data)
-		# data = re.sub(UP("EMOTICONS")             , '', data)
-		# data = re.sub(UP("MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS"), '', data)
-		return data
 	
 	def get_emoji_messages(self):
 		return self.get_messages(utils.emoji.PATTERN)
 
 	def get_all_emojis(self, combined=True):
 		if combined:
-			return re.findall(utils.emoji.PATTERN, '\n'.join(self.messages_by_user_combined))
+			return re.findall(
+				utils.emoji.PATTERN,
+				'\n'.join(self.messages_by_user_combined)
+			)
 		else:
 			return [
 				re.findall(utils.emoji.PATTERN, i)
 				for i in self.messages_by_user_combined
 			]
+	
 	def plot_emojis(self, amount=5):
 		# a = wp.d.get_all_emojis()
 		# b = Counter(a)
@@ -556,8 +560,60 @@ class Data(object):
 			title=self._users_first_name
 		)
 
-	def get_all_user_emojis(self):
-		pass
+	###############################################
+	############       EMOTICONS       ############
+	###############################################
+
+	def get_emoticon_messages(self):
+		return self.get_messages(utils.smily.PATTERN)
+
+	def get_emoticon_messages_by_type(self):
+		return [
+			self.get_messages(utils.smily.ER(i))
+			for i in utils.smily.EMOTICON_NAMES
+		]
+
+	def get_all_emoticons(self, combined=True):
+		if combined:
+			return re.findall(
+				utils.smily.PATTERN, 
+				'\n'.join(self.messages_by_user_combined)
+			)
+		else:
+			return [
+				re.findall(utils.smily.PATTERN, i)
+				for i in self.messages_by_user_combined
+			]
+
+	def plot_emoticons(self, amount=10):
+		data = utils.counter(self.get_all_emoticons())
+		return utils.plot.hist(
+			data,
+			amount=max(amount, len(data)),
+			sort="counter"
+		)
+	def plot_emoticons_by_users(self, amount=5):
+		if len(self.users) != 2:
+			return(bool(print("More than 2 users are not allowed!")))
+		data = map(
+			utils.counter,
+			self.get_all_emoticons(False)
+		)
+		return utils.plot.hist_2(
+			list(data),
+			amount=amount,
+			sort="counter",
+			title=self._users_first_name
+		)
+	def plot_emoticons_by_type(self):
+		return utils.plot.hist(
+			list(map(
+				utils.smily.emoticon_to_type,
+				self.get_all_emoticons()
+			)),
+			amount=len(utils.smily.EMOTICON_NAMES),
+			sort="counter"
+		)
 
 	###############################################
 	############         CHATS         ############
@@ -578,7 +634,7 @@ class Data(object):
 				"%02dw_%02dd_%02d:%02d" % (r.days // 7, r.days % 7, r.seconds // (60*60), r.seconds // 60 % 60)
 			), **kwargs)
 
-	def _divide_to_chat_blocks(self):
+	def create_chat_blocks(self):
 		#############################
 		#### utility functions   ####
 		#############################
@@ -680,10 +736,6 @@ class Data(object):
 				 and
 				not is_single_sender((line, self.lines[i-1]))
 			):
-				print("[*] night %d" % i)
-				print_line(self.lines[i-1])
-				print_line(self.lines[i  ])
-				print_line(self.lines[i+1])
 				current_chat.append(line)
 			# default
 			else:
@@ -751,7 +803,7 @@ class Data(object):
 		)))
 
 	###############################################
-	############         CHATS         ############
+	############       FEATURES        ############
 	###############################################
 
 	def get_all_features(self):
@@ -811,6 +863,121 @@ class Data(object):
 			self.users
 		))
 
+	def get_all_features(self):
+		ratio = {}
+		ratio["message"] = numpy.divide(*self.user_message_amount)
+		ratio["media"] = numpy.divide(*self.user_media_amount)
+		ratio["words"] = numpy.divide(*self.user_words_amount)
+
+		_long_messages = self.get_messages(lambda x:len(x[MI('M')].split()>=10))
+		_long_messages_amount_per_user = list(map(
+			# iterate all the users
+			# and count how many long messages each of them has
+			lambda u: len(list(filter(
+				# iterate all the long messages
+				# and filter out only messages by the user
+				lambda m: m[MI('U')] == u,
+				_long_messages
+			))),
+			self.users
+		))
+		ratio["long messages"] = numpy.divide(*_long_messages_amount_per_user)
+		del _long_messages
+		del _long_messages_amount_per_user
+
+		_messages_with_h = self.get_messages(P("H"))
+		_messages_with_h_per_user = list(map(
+			lambda u: len(list(filter(
+				lambda m: m[MI('U')] == u,
+				_messages_with_h
+			))),
+			self.users
+		))
+		ratio["messages with h"] = numpy.divide(*_messages_with_h_per_user)
+
+		laugh = {}
+		laugh["user0 hpm"] = self.user_hpm[0]
+		laugh["user1 hpm"] = self.user_hpm[1]
+		_user_h_per_media = whos_the_funniest(self, plot=False)
+		laugh["user0 h after media"] = _user_h_per_media[1]
+		laugh["user1 h after media"] = _user_h_per_media[1]
+		del _user_h_per_media
+
+		active_hours = dict(zip(["07-12", "12-17", "17-21", "21-07"], [0]*4))
+		for i in self.lines:
+			if   7  <= i[MI("DATE")].hour < 12:
+				active_hours["07-12"] += 1
+			elif 12 <= i[MI("DATE")].hour < 17:
+				active_hours["12-17"] += 1
+			elif 17 <= i[MI("DATE")].hour < 21:
+				active_hours["17-21"] += 1
+			else:
+				active_hours["21-07"] += 1
+		for k in active_hours:
+			active_hours[k] /= len(self.lines)
+
+		_active_days = [0]*len(utils.date.DAYS)
+		for i in self.lines:
+			_active_days[i[0].weekday()] += 1
+		active_days = dict(zip(
+			utils.date.DAYS, 
+			map(
+				lambda x: x / len(self.lines),
+				_active_days
+			)
+		))
+		del _active_days
+
+		user0_activity_per_day = {}
+		user1_activity_per_day = {}
+		total_activity_per_day = {}
+		user0_activity_per_message = {}
+		user1_activity_per_message = {}
+
+		_chat_length = (self.lines[-1][0] - self.lines[0][0]).days
+		user0_activity_per_day["message"] = self.user_message_amount[0] / _chat_length
+		user1_activity_per_day["message"] = self.user_message_amount[1] / _chat_length
+		total_activity_per_day["message"] = sum(self.user_message_amount)   / _chat_length
+
+		user0_activity_per_day["media"] = self.user_media_amount[0] / _chat_length
+		user1_activity_per_day["media"] = self.user_media_amount[1] / _chat_length
+		total_activity_per_day["media"] = sum(self.user_media_amount)   / _chat_length
+
+		user0_activity_per_day["words"] = self.user_words_amount[0] / _chat_length
+		user1_activity_per_day["words"] = self.user_words_amount[1] / _chat_length
+		total_activity_per_day["words"] = sum(self.user_words_amount)   / _chat_length
+
+		_emojis_per_user = list(map(len, self.get_all_emojis(False)))
+		user0_activity_per_day["emoji"] = _emojis_per_user[0] / _chat_length
+		user1_activity_per_day["emoji"] = _emojis_per_user[1] / _chat_length
+		total_activity_per_day["emoji"] = sum(_emojis_per_user) / _chat_length
+		user0_activity_per_message["emoji"] = _emojis_per_user[0] / self.user_message_amount[0]
+		user1_activity_per_message["emoji"] = _emojis_per_user[1] / self.user_message_amount[1]
+		del _emojis_per_user
+
+		_emoticons_per_user = list(map(len, self.get_all_emoticons(False)))
+		user0_activity_per_day["emoticons"] = _emoticons_per_user[0] / _chat_length
+		user1_activity_per_day["emoticons"] = _emoticons_per_user[1] / _chat_length
+		total_activity_per_day["emoticons"] = sum(_emoticons_per_user) / _chat_length
+		user0_activity_per_message["emoticons"] = _emoticonss_per_user[0] / self.user_message_amount[0]
+		user1_activity_per_message["emoticons"] = _emoticonss_per_user[1] / self.user_message_amount[1]
+		del _emoticons_per_user
+
+		conversations = {}
+		conversations["amount per week"] = len(self.chats) // (_chat_length//7)
+		ratio["conversations"] = numpy.divide(*
+			[
+				i[1]
+				for i in [
+					utils.counter([
+						i[0][MI("USER")]
+						for i in self.chats
+					])
+				]
+			]
+		)
+
+
 def print_line(x):
 	print("%-6s - %s (%6.2f) - %s" % (
 		x[1].split()[0], # sender
@@ -831,7 +998,7 @@ def plot_words(words, amount=15):
 		map=lambda x: [x[0][::-1], x[1]] # hebrew display
 	)
 
-def whos_the_funniest(data):
+def whos_the_funniest(data, plot=True):
 	def is_media(x):
 		return x[MI("TYPE")] == "MEDIA"
 	def is_same_user(x,y):
@@ -888,7 +1055,10 @@ def whos_the_funniest(data):
 		for u in data._users
 	]
 
-	utils.plot.bar(user_h_per_media, data._users_first_name)
+	if plot:
+		utils.plot.bar(user_h_per_media, data._users_first_name)
+	else:
+		return user_h_per_media
 
 if __name__ == '__main__':
 	pass

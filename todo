@@ -1,0 +1,10 @@
+
+[ ] order functions
+
+[ ] finish get_all_features
+
+[ ] parse links into a new message type
+
+[ ] find interested words ("yesss" vs "yes")
+
+[ ] get_most_common_words - multiple_lines
