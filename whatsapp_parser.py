@@ -976,6 +976,18 @@ class Data(object):
 				]
 			]
 		)
+		_diff_time_between_conversations = list(map(
+			lambda x: x[0][MI("RELATIVE")],
+			self.chats[1:]
+		))
+		conversations["avg diff time"] = numpy.average(_diff_time_between_conversations)
+		conversations["std diff time"] = numpy.std(_diff_time_between_conversations)
+		del _diff_time_between_conversations
+
+		_diff_time_between_messages = list(map(
+			lambda x: x[1][MI("DATE")] - x[0][MI("DATE")],
+			self.chats
+		))
 
 
 def print_line(x):
