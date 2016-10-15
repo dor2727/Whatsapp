@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import re
 import sys
 import time
@@ -131,6 +132,9 @@ class Data(object):
 	###############################################
 	############          INIT         ############
 	###############################################
+
+	def __init__(self, file_name='w'):
+		self._file_name = file_name
 	
 	def init(self, debug=False, debug_time=None, exclude_system=True):
 		if debug and not debug_time:
@@ -181,8 +185,8 @@ class Data(object):
 		if debug:
 			print("[*] loaded in %s seconds" % (time.time() - start))
 
-	def _read_data(self, file_name='w'):
-		f = open(file_name, 'rb')
+	def _read_data(self):
+		f = open(self._file_name, 'rb')
 		a = f.read()
 		f.close()
 		self.data = a.decode("utf8")
@@ -806,70 +810,25 @@ class Data(object):
 	############       FEATURES        ############
 	###############################################
 
-	def get_all_features(self):
-		if len(self.users) != 2:
-			return(bool(print("len(users) != 2")))
-		features = {}
-
-		##### message ratio #####
-		
-		features["message ratio"]      = numpy.divide(*self.user_message_amount)
-		features["media ratio"]        = numpy.divide(*self.user_media_amount)
-		features["words ratio"] = numpy.divide(*list(map(len, self.messages_by_user_combined)))
-		
-		_long_messages = self.get_messages(lambda x:len(x[MI('M')].split()>=10))
-		_long_messages_amount_per_user = list(map(
-			# iterate all the users
-			# and count how many long messages each of them has
-			lambda u: len(list(filter(
-				# iterate all the long messages
-				# and filter out only messages by the user
-				lambda m: m[MI('U')] == u,
-				_long_messages
-			))),
-			self.users
-		))
-		features["long message ratio"] = numpy.divide(*_long_messages_amount_per_user)
-		del _long_messages
-		del _long_messages_amount_per_user
-
-		##### laugher #####
-
-		features["h / message"]
-		features["messages with h"]
-		features["amount of h after media"]
-
-		##### basic time statistics #####
-
-		features["most active hours"]
-		features["most active days"]
-		features["chat timespan"]
-		features["message / day"]
-		features["message / week"]
-		features["message / month"]
-		features["media / day"]
-		features["media / week"]
-		features["media / month"]
-		features["words / day"]
-		features["words / week"]
-		features["words / month"]
-
-		##### advanced time statistics #####
-
-		##### emoji #####
-		
-		features["emoji / message"] = list(map(
-			lambda x: x,
-			self.users
-		))
-
-	def get_all_features(self):
+	def get_features_ratio(self):
 		ratio = {}
+		ratio_description = {}
+
+		# message ratio
+		ratio_description["message"] = "[amount of messages from] user0 / user1"
 		ratio["message"] = numpy.divide(*self.user_message_amount)
+
+		# media ratio
+		ratio_description["media"] = "[amount of media from] user0 / user1"
 		ratio["media"] = numpy.divide(*self.user_media_amount)
+
+		# words ratio
+		ratio_description["words"] = "[amount of words sent by] user0 / user1"
 		ratio["words"] = numpy.divide(*self.user_words_amount)
 
-		_long_messages = self.get_messages(lambda x:len(x[MI('M')].split()>=10))
+		# long_messages ratio
+		ratio_description["long messages"] = "[amount of messages with more than 10 words from] user0 / user1"
+		_long_messages = self.get_messages(lambda x:len(x[MI('M')].split())>=10)
 		_long_messages_amount_per_user = list(map(
 			# iterate all the users
 			# and count how many long messages each of them has
@@ -885,6 +844,8 @@ class Data(object):
 		del _long_messages
 		del _long_messages_amount_per_user
 
+		# messages with h
+		ratio_description["messages with h"] = "[amount of messages with h by] user0 / user1"
 		_messages_with_h = self.get_messages(P("H"))
 		_messages_with_h_per_user = list(map(
 			lambda u: len(list(filter(
@@ -894,15 +855,59 @@ class Data(object):
 			self.users
 		))
 		ratio["messages with h"] = numpy.divide(*_messages_with_h_per_user)
+		del _messages_with_h
+		del _messages_with_h_per_user
 
+		ratio_description["conversations"] = "[amount of conversations started by] user0 / user1"
+		_conversations_started = utils.counter([
+				c[0][MI("USER")]
+				for c in self.chats
+			])
+		ratio["conversations"] = numpy.divide(*[
+			# get the conversation started by the user
+			next(filter(
+				lambda x: x[0] == u,
+				_conversations_started
+			# get the amount of conversations
+			))[1]
+			for u in
+			# keep the order of the users
+			self.users
+		])
+		
+		return ratio, ratio_description
+
+	def get_features_laugh(self):
 		laugh = {}
-		laugh["user0 hpm"] = self.user_hpm[0]
-		laugh["user1 hpm"] = self.user_hpm[1]
-		_user_h_per_media = whos_the_funniest(self, plot=False)
-		laugh["user0 h after media"] = _user_h_per_media[1]
-		laugh["user1 h after media"] = _user_h_per_media[1]
+		laugh_description = {}
+
+		# H per message
+		# H per data
+		laugh_description["user%d hpm"] = "H per message of every user"
+		laugh_description["user%d hpd"] = "H per [amount of chars] of every user"
+		for i in range(len(self.users)):
+			laugh["user%d hpm" % i] = self.user_hpm[i]
+			laugh["user%d hpd" % i] = self.user_hpd[i]
+
+		# H after media
+		laugh_description["user%d h after media"] = "amount of H coming from other users for media sent by the user (indicates how funny the media is)"
+		_user_h_per_media = whos_the_funniest(self, plot=False, following_messages_amount=5)
+		for i in range(len(self.users)):
+			laugh["user%d h after media" % i] = _user_h_per_media[i]
 		del _user_h_per_media
 
+		return laugh, laugh_description
+
+	def get_features_basic_time_statistics_general(self):
+		# active hours
+		active_hours_description = {
+			'*'     : "A dict showing the active times of the day in percentages.\n"
+			          "They all add up to 1 (sum(active_hours.values()) ~= 1 # up to float precision )",
+			"07-12" : "Morning",
+			"12-17" : "Noon",
+			"17-21" : "Evening",
+			"21-07" : "Night"
+		}
 		active_hours = dict(zip(["07-12", "12-17", "17-21", "21-07"], [0]*4))
 		for i in self.lines:
 			if   7  <= i[MI("DATE")].hour < 12:
@@ -916,6 +921,8 @@ class Data(object):
 		for k in active_hours:
 			active_hours[k] /= len(self.lines)
 
+		# active days
+		active_days_description = "Percentage of activity in each day (0 is Monday)"
 		_active_days = [0]*len(utils.date.DAYS)
 		for i in self.lines:
 			_active_days[i[0].weekday()] += 1
@@ -928,67 +935,333 @@ class Data(object):
 		))
 		del _active_days
 
-		user0_activity_per_day = {}
-		user1_activity_per_day = {}
-		total_activity_per_day = {}
-		user0_activity_per_message = {}
-		user1_activity_per_message = {}
+		return  active_hours, active_hours_description, \
+				active_days, active_days_description
 
+	def get_features_basic_time_statistics_per_user(self):
+		activity = {}
+		for i in range(len(self.users)):
+			activity["user%d" % i] = {}
+			# activity of user per day
+			activity["user%d" % i]["day"] = {}
+			# activity of user per message
+			activity["user%d" % i]["message"] = {}
+		activity["total"] = {}
+		activity["total"]["day"] = {}
+		activity["total"]["message"] = {}
+
+		# how long is the chat (in days)
 		_chat_length = (self.lines[-1][0] - self.lines[0][0]).days
-		user0_activity_per_day["message"] = self.user_message_amount[0] / _chat_length
-		user1_activity_per_day["message"] = self.user_message_amount[1] / _chat_length
-		total_activity_per_day["message"] = sum(self.user_message_amount)   / _chat_length
 
-		user0_activity_per_day["media"] = self.user_media_amount[0] / _chat_length
-		user1_activity_per_day["media"] = self.user_media_amount[1] / _chat_length
-		total_activity_per_day["media"] = sum(self.user_media_amount)   / _chat_length
+		# [message / media / words] per day
+		for i in range(len(self.users)):
+			activity["user%d" % i]["day"]["message"] = self.user_message_amount[i] / _chat_length
+			activity["user%d" % i]["day"]["media"]   = self.user_media_amount[i]   / _chat_length
+			activity["user%d" % i]["day"]["words"]   = self.user_words_amount[i]   / _chat_length
+		activity["total"]["day"]["message"] = sum(self.user_message_amount)   / _chat_length
+		activity["total"]["day"]["media"]   = sum(self.user_media_amount)     / _chat_length
+		activity["total"]["day"]["words"]   = sum(self.user_words_amount)     / _chat_length
 
-		user0_activity_per_day["words"] = self.user_words_amount[0] / _chat_length
-		user1_activity_per_day["words"] = self.user_words_amount[1] / _chat_length
-		total_activity_per_day["words"] = sum(self.user_words_amount)   / _chat_length
-
-		_emojis_per_user = list(map(len, self.get_all_emojis(False)))
-		user0_activity_per_day["emoji"] = _emojis_per_user[0] / _chat_length
-		user1_activity_per_day["emoji"] = _emojis_per_user[1] / _chat_length
-		total_activity_per_day["emoji"] = sum(_emojis_per_user) / _chat_length
-		user0_activity_per_message["emoji"] = _emojis_per_user[0] / self.user_message_amount[0]
-		user1_activity_per_message["emoji"] = _emojis_per_user[1] / self.user_message_amount[1]
+		_emojis_per_user    = list(map(len, self.get_all_emojis   (combined=False)))
+		_emoticons_per_user = list(map(len, self.get_all_emoticons(combined=False)))
+		for i in range(len(self.users)):
+			activity["user%d" % i]["day"]    ["emoji"]    = _emojis_per_user[i]    / _chat_length
+			activity["user%d" % i]["message"]["emoji"]    = _emojis_per_user[i]    / self.user_message_amount[i]
+			activity["user%d" % i]["day"]    ["emoticon"] = _emoticons_per_user[i] / _chat_length
+			activity["user%d" % i]["message"]["emoticon"] = _emoticons_per_user[i] / self.user_message_amount[i]
+		activity["total"]["day"]    ["emoji"] = sum(_emojis_per_user) / _chat_length
+		activity["total"]["message"]["emoji"] = sum(_emojis_per_user) / sum(self.user_message_amount)
+		activity["total"]["day"]    ["emoticon"] = sum(_emoticons_per_user) / _chat_length
+		activity["total"]["message"]["emoticon"] = sum(_emoticons_per_user) / sum(self.user_message_amount)
 		del _emojis_per_user
-
-		_emoticons_per_user = list(map(len, self.get_all_emoticons(False)))
-		user0_activity_per_day["emoticons"] = _emoticons_per_user[0] / _chat_length
-		user1_activity_per_day["emoticons"] = _emoticons_per_user[1] / _chat_length
-		total_activity_per_day["emoticons"] = sum(_emoticons_per_user) / _chat_length
-		user0_activity_per_message["emoticons"] = _emoticonss_per_user[0] / self.user_message_amount[0]
-		user1_activity_per_message["emoticons"] = _emoticonss_per_user[1] / self.user_message_amount[1]
 		del _emoticons_per_user
+		del _chat_length
 
+		return activity
+
+	def get_features_conversations(self):
 		conversations = {}
-		conversations["amount per week"] = len(self.chats) // (_chat_length//7)
-		ratio["conversations"] = numpy.divide(*
-			[
-				i[1]
-				for i in [
-					utils.counter([
-						i[0][MI("USER")]
-						for i in self.chats
-					])
-				]
-			]
-		)
+		conversations_description = {}
+
+		### utility functions
+		def _amount_of_senders(x):
+			return len(set( i[MI("USER")] for i in x ))
+		def get_multi_user_chats():
+			return filter(
+				lambda x: _amount_of_senders(x) > 1,
+				self.chats
+			)
+		def count_multi_user_chats():
+			return sum(map(
+				lambda x: _amount_of_senders(x) > 1,
+				self.chats
+			))
+		def get_user_started_chats(index):
+			return filter(
+				lambda x: x[0][MI("USER")] == self.users[index],
+				get_multi_user_chats()
+			)
+		def get_index_of_first_message_of_second_user(chat):
+			"""
+			next makes it so only the first output
+			of the filter object is returned
+			and than the gc deletes the filter object
+			"""
+			return chat.index(next(filter(
+				lambda x: x[MI("USER")] != chat[0][MI("USER")],
+				chat
+			)))
+
+		# how long is the chat (in days)
+		_chat_length = (self.lines[-1][0] - self.lines[0][0]).days
+
+		# conversations per week
+		conversations_description["week"] = "amount of conversations per week"
+		conversations["week"] = len(self.chats) / (_chat_length//7)
+		# not-ignored conversations per week
+		conversations_description["week 1<"] = "amount of (conversations with more than 1 sender) per week"
+		conversations["week 1<"] = count_multi_user_chats() / (_chat_length//7)
+		del _chat_length
+
+		# diff time between conversations
 		_diff_time_between_conversations = list(map(
-			lambda x: x[0][MI("RELATIVE")],
+			lambda x: x[0][MI("RELATIVE")].total_seconds(),
 			self.chats[1:]
 		))
+		conversations_description["avg diff time"] = "average of diff time between following conversations"
+		conversations_description["std diff time"] = "standard deviation of diff time between following conversations"
 		conversations["avg diff time"] = numpy.average(_diff_time_between_conversations)
 		conversations["std diff time"] = numpy.std(_diff_time_between_conversations)
 		del _diff_time_between_conversations
 
-		_diff_time_between_messages = list(map(
-			lambda x: x[1][MI("DATE")] - x[0][MI("DATE")],
-			self.chats
-		))
+		# amount of ignored chats
+		conversations_description["user%d ignored chats"] = "amount of conversations user%d started and the other user ignored"
+		_ignored_chats = [0]*len(self.users)
+		for c in self.chats:
+			if _amount_of_senders(c) == 1:
+				_ignored_chats[
+					self.users.index(
+						c[0][MI("USER")]
+					) 
+				] += 1
+		for i in range(len(self.users)):
+			conversations["user%d ignored chats" % i] = _ignored_chats[i] / len(self.chats)
+		del _ignored_chats
 
+		# diff time between first sender to second sender
+		#     where user%d is the first sender
+		conversations_description["user%d avg between messages"] = "average of the time between the message of user%d that started the conversation to the reply message of the other user"
+		conversations_description["user%d std between messages"] = "standard deviation of the time between the message of user%d that started the conversation to the reply message of the other user"
+		for u in range(len(self.users)):
+			diffs = []
+			for c in get_user_started_chats(u):
+				i = get_index_of_first_message_of_second_user(c)
+				diff = c[i][MI("DATE")] - c[i-1][MI("DATE")]
+				diffs.append(diff.total_seconds())
+			conversations["user%d avg between messages" % u] = numpy.average(diffs)
+			conversations["user%d std between messages" % u] = numpy.std(diffs)
+
+		conversations_description["emotions"] = "average amount of emojis and emoticons in conversations"
+		conversations["emotions"] = sum(map(
+			lambda c: len(
+				re.findall(utils.emoji.PATTERN, '\n'.join(i[MI("MESSAGE")] for i in c))
+				 +
+				re.findall(utils.smily.PATTERN, '\n'.join(i[MI("MESSAGE")] for i in c))
+			),
+			self.chats
+		)) / len(self.chats)
+
+		return conversations, conversations_description
+
+	def get_features_emotions(self):
+		emotions = {}
+		emotions_description = {}
+
+		emotions["emoji"] = {}
+		emotions["emoticons"] = {}
+		emotions_description["emoji"] = {}
+		emotions_description["emoticons"] = {}
+
+		emotions_description["emoji"]["happy"]     = "percentage of happy emoji     out of all the emoji"
+		emotions_description["emoji"]["sad"]       = "percentage of sad   emoji     out of all the emoji"
+		emotions_description["emoticons"]["happy"] = "percentage of happy emoticons out of all the emoticons"
+		emotions_description["emoticons"]["sad"]   = "percentage of sad   emoticons out of all the emoticons"
+		emotions["emoji"]["happy"]     = len(re.findall(
+				utils.emoji.PATTERN_HAPPY,
+				'\n'.join(self.messages_by_user_combined)
+			)) / len(self.get_all_emojis())
+		emotions["emoji"]["sad"]       = len(re.findall(
+				utils.emoji.PATTERN_SAD,
+				'\n'.join(self.messages_by_user_combined)
+			)) / len(self.get_all_emojis())
+		emotions["emoticons"]["happy"] = len(re.findall(
+				utils.smily.PATTERN_HAPPY,
+				'\n'.join(self.messages_by_user_combined)
+			)) / len(self.get_all_emoticons())
+		emotions["emoticons"]["sad"]   = len(re.findall(
+				utils.smily.PATTERN_SAD,
+				'\n'.join(self.messages_by_user_combined)
+			)) / len(self.get_all_emoticons())
+
+		return emotions, emotions_description
+
+	def get_features(self, ret="dict"):
+		ratio, ratio_description = self.get_features_ratio()
+		laugh, laugh_description = self.get_features_laugh()
+		active_hours, active_hours_description, \
+		active_days, active_days_description = self.get_features_basic_time_statistics_general()
+		activity = self.get_features_basic_time_statistics_per_user()
+		conversations, conversations_description = self.get_features_conversations()
+		emotions, emotions_description = self.get_features_emotions()
+
+		if ret == "dict":
+			return {
+				"value" : {
+					"ratio" : ratio,
+					"laugh" : laugh,
+					"active_hours" : active_hours,
+					"active_days" : active_days,
+					"activity" : activity,
+					"conversations" : conversations,
+					"emotions" : emotions,
+				},
+				"description" : {
+					"ratio" : ratio_description,
+					"laugh" : laugh_description,
+					"active_hours" : active_hours_description,
+					"active_days" : active_days_description,
+					"conversations" : conversations_description,
+					"emotions" : emotions_description,
+				}
+			}
+		elif ret == "list":
+			return [
+				ratio["message"],
+				ratio["media"],
+				ratio["words"],
+				ratio["long messages"],
+				ratio["messages with h"],
+				ratio["conversations"],
+				*[	laugh["user%d hpm" % i]
+					for i in range(len(self.users)) ],
+				*[	laugh["user%d hpd" % i]
+					for i in range(len(self.users)) ],
+				*[	laugh["user%d h after media" % i]
+					for i in range(len(self.users)) ],
+				active_hours["07-12"],
+				active_hours["12-17"],
+				active_hours["17-21"],
+				active_hours["21-07"],
+				active_days["Sun"],
+				active_days["Mon"],
+				active_days["Tue"],
+				active_days["Wed"],
+				active_days["Thu"],
+				active_days["Fri"],
+				active_days["Sat"],
+				*[	activity["user%d" % i]["day"]["message"]
+					for i in range(len(self.users)) ],
+				activity["total"]["day"]["message"],
+				*[	activity["user%d" % i]["day"]["media"]
+					for i in range(len(self.users)) ],
+				activity["total"]["day"]["media"],
+				*[	activity["user%d" % i]["day"]["words"]
+					for i in range(len(self.users)) ],
+				activity["total"]["day"]["words"],
+				*[	activity["user%d" % i]["day"]["emoji"]
+					for i in range(len(self.users)) ],
+				activity["total"]["day"]["emoji"],
+				*[	activity["user%d" % i]["day"]["emoticon"]
+					for i in range(len(self.users)) ],
+				activity["total"]["day"]["emoticon"],
+				*[	activity["user%d" % i]["message"]["emoji"]
+					for i in range(len(self.users)) ],
+				activity["total"]["message"]["emoji"],
+				*[	activity["user%d" % i]["message"]["emoticon"]
+					for i in range(len(self.users)) ],
+				activity["total"]["message"]["emoticon"],
+				conversations["week"],
+				conversations["week 1<"],
+				conversations["emotions"],
+				conversations["avg diff time"],
+				conversations["std diff time"],
+				*[	conversations["user%d ignored chats" % i]
+					for i in range(len(self.users)) ],
+				*[	conversations["user%d avg between messages" % i]
+					for i in range(len(self.users)) ],
+				*[	conversations["user%d std between messages" % i]
+					for i in range(len(self.users)) ],
+				emotions["emoji"]["happy"],
+				emotions["emoji"]["sad"],
+				emotions["emoticons"]["happy"],
+				emotions["emoticons"]["sad"],
+			], [
+				'ratio["message"]',
+				'ratio["media"]',
+				'ratio["words"]',
+				'ratio["long messages"]',
+				'ratio["messages with h"]',
+				'ratio["conversations"]',
+				*[	'laugh["user%d hpm"]' % i
+					for i in range(len(self.users)) ],
+				*[	'laugh["user%d hpd"]' % i
+					for i in range(len(self.users)) ],
+				*[	'laugh["user%d h after media"]' % i
+					for i in range(len(self.users)) ],
+				'active_hours["07-12"]',
+				'active_hours["12-17"]',
+				'active_hours["17-21"]',
+				'active_hours["21-07"]',
+				'active_days["Sun"]',
+				'active_days["Mon"]',
+				'active_days["Tue"]',
+				'active_days["Wed"]',
+				'active_days["Thu"]',
+				'active_days["Fri"]',
+				'active_days["Sat"]',
+				*[	'activity["user%d"]["day"]["message"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["day"]["message"]',
+				*[	'activity["user%d"]["day"]["media"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["day"]["media"]',
+				*[	'activity["user%d"]["day"]["words"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["day"]["words"]',
+				*[	'activity["user%d"]["day"]["emoji"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["day"]["emoji"]',
+				*[	'activity["user%d"]["day"]["emoticons"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["day"]["emoticons"]',
+				*[	'activity["user%d"]["message"]["emoji"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["message"]["emoji"]',
+				*[	'activity["user%d"]["message"]["emoticons"]' % i
+					for i in range(len(self.users)) ],
+				'activity["total"]["message"]["emoticons"]',
+				'conversations["week"]',
+				'conversations["week 1<"]',
+				'conversations["emotions"]',
+				'conversations["avg diff time"]',
+				'conversations["std diff time"]',
+				*[	'conversations["user%d ignored chats"]' % i
+					for i in range(len(self.users)) ],
+				*[	'conversations["user%d avg between messages"]' % i
+					for i in range(len(self.users)) ],
+				*[	'conversations["user%d std between messages"]' % i
+					for i in range(len(self.users)) ],
+				'emotions["emoji"]["happy"]',
+				'emotions["emoji"]["sad"]',
+				'emotions["emoticons"]["happy"]',
+				'emotions["emoticons"]["sad"]',
+			]
+
+	def print_features(self, **kwargs):
+		l = self.get_features("list")
+		print(", ".join(self.users), **kwargs)
+		for i in list(zip(*l)):
+			print("%-43s : %s" % i[::-1], **kwargs)
 
 def print_line(x):
 	print("%-6s - %s (%6.2f) - %s" % (
@@ -1010,14 +1283,14 @@ def plot_words(words, amount=15):
 		map=lambda x: [x[0][::-1], x[1]] # hebrew display
 	)
 
-def whos_the_funniest(data, plot=True):
+def whos_the_funniest(data, plot=True, following_messages_amount=10):
 	def is_media(x):
 		return x[MI("TYPE")] == "MEDIA"
 	def is_same_user(x,y):
 		return x[MI("USER")] == y[MI("USER")]
 
 	# get all the media messages
-	all_media = data.get_following_messages(is_media, exclude_function=is_same_user)
+	all_media = data.get_following_messages(is_media, exclude_function=is_same_user, amount=following_messages_amount)
 
 	# reformat for our needs (the media message, all the following messages combined)
 	all_media_formatter = [
@@ -1073,7 +1346,26 @@ def whos_the_funniest(data, plot=True):
 		return user_h_per_media
 
 if __name__ == '__main__':
-	pass
+	input_file = [i[len("in:"):] for i in sys.argv[1:] if i.startswith("in:")]
+	if input_file:
+		d = Data(input_file[0])
+	else:
+		d = Data()
+
+	debug = [i[len("debug:"):] for i in sys.argv[1:] if i.startswith("debug:")]
+	if debug:
+		d.init_all(debug=int(debug[0]), exclude_system=True)
+	else:
+		d.init_all(debug=True, exclude_system=True)
+
+	dump = [i[len("dump:"):] for i in sys.argv[1:] if i.startswith("dump:")]
+	if dump:
+		dump_file = dump[0]
+		if dump_file:
+			d.print_features(file=open(dump_file, 'w'))
+		else:
+			d.print_features()
+	
 else:
 	d = Data()
 	d.init_all(debug=True, exclude_system=True)
