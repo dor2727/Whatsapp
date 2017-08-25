@@ -5,12 +5,13 @@ import time
 import enum
 import utils
 import numpy
-import string
 import datetime
 import matplotlib.pyplot as plt
 
 from collections import Counter
 
+P  = utils.enum.enum_getter(utils.re.PATTERNS)
+UP = utils.enum.enum_getter(utils.re.UNICODE_PATTERNS)
 
 class MESSAGE_TYPE(enum.Enum):
 	MESSAGE = 0
@@ -24,87 +25,18 @@ class MESSAGE_TYPE(enum.Enum):
 MT = utils.enum.enum_getter(MESSAGE_TYPE)
 
 class MESSAGE_ITEMS(enum.Enum):
-	DATE     = 0
-	D        = DATE
-	USER     = 1
+	USER     = 0
 	U        = USER
-	MESSAGE  = 2
+	MESSAGE  = 1
 	MSG      = MESSAGE
 	M        = MESSAGE
-	TYPE     = 3
+	TYPE     = 2
 	T        = TYPE
+	DATE     = 3
+	D        = DATE
 	RELATIVE = 4
 	R        = RELATIVE
 MI = utils.enum.enum_getter(MESSAGE_ITEMS)
-
-class PATTERNS(enum.Enum):
-	# split messages by the date pattern
-	# "[date], [time] - .*"
-	_DATE_AND_TIME = "\d{1,2}/\d{1,2}/\d\d, \d\d\:\d\d"
-	DATE = re.compile(u'(' + _DATE_AND_TIME + " - .*)\n")
-
-	# hebrew[0] = \xd7\x90
-	# hebrew[0] = \u05d0
-	# hebrew[-1] = \xd7\xaa
-	# hebrew[-1] = \u05ea
-	# English + Hebrew alphabet only
-	WORDS = re.compile("[a-zA-Z\u05d0-\u05ea]+")
-
-	PUNCTUATIONS = re.compile(
-		'['
-		 +
-		''.join([
-			'\\' + i
-			for i in
-			string.punctuation
-		])
-		 +
-		"]+"
-	)
-
-	# HEBREW_PUNCTUATIONS = re.compile("[\u05f2\u05f3\u05f4]+")
-	HEBREW_PUNCTUATIONS = re.compile('[' + 
-		''.join([
-			'\u05f2', # HEBREW LIGATURE YIDDISH DOUBLE YOD
-			'\u05f3', # GERESH
-			'\u05f4'  # GERSHAYIM
-		])
-		 +
-		"]+"
-	)
-
-	OLD_UNIOCDE = re.compile("[\ue000-\uefff]+")
-
-	NUMBER = re.compile("[0-9]+")
-		
-	# H = "\xd7\x97"
-	_H = "\u05d7"
-	H = re.compile("(HH+)".replace('H', _H))
-
-	OTHER = re.compile(
-		'['
-		 +
-		''.join([
-			'\xd7', # multiplication sign
-			'\xe9', # e with accent
-		])
-		 +
-		']'
-	)
-P = utils.enum.enum_getter(PATTERNS)
-
-class UNICODE_PATTERNS(enum.Enum):
-	EXTENDED_ASCII = re.compile("[\u0080-\u00ff]+")
-	HEBREW = re.compile("[\u0590-\u05ff\ufb00-\ufb4f]+")
-	ARABIC = re.compile("[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]+")
-	GENERAL_PUNCTUATION = re.compile("[\u2000-\u206f]+")
-	CURRENCY = re.compile("[\u20a0-\u20cf]+")
-	MATHEMATICAL_OPERATORS = re.compile("[\u2200-\u22ff]+")
-	PRIVATE_USE = re.compile("[\ue000-\uf8ff]+")
-	EMOTICONS = re.compile("[\U0001f600-\U0001f64f]+")
-	MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS = re.compile("[\U0001f300-\U0001f5ff]+")
-UP = utils.enum.enum_getter(UNICODE_PATTERNS)
-
 
 def _get_non_letters(self, data):
 	# data = '\n'.join(self.messages_by_user_combined)
@@ -127,70 +59,134 @@ def _get_non_letters(self, data):
 	# data = re.sub(UP("MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS"), '', data)
 	return data
 
+class Line(object):
+	"""
+	parses the data and splits into messages
+	message can be one of 3 types
+		system message - "[date], [time] - [system_message_data]"
+		user   message - "[date], [time] - [user]: [user_message_data]"
+		user   media   - "[date], [time] - [user]: <Media omitted>"
+
+	this data is being parsed into an array
+		content name - [date    , user, message, message_type       ]
+		content type - [datetime, str , str    , int of MESSAGE_TYPE]
+
+	* ':' in a system message will return unwanted results
+		e.g. "[user] has changed the group name to \"abc:def\""
+	"""
+
+		# split messages by the date pattern
+	# "[date], [time] - .*"
+	_DATE = "\\d{1,2}/\\d{1,2}/\\d\\d"
+	_TIME = "\\d\\d\:\\d\\d"
+	_DATE_AND_TIME = "%s, %s" % (_DATE, _TIME)
+	DATE = re.compile(u"(%s - .*)\n" % _DATE_AND_TIME)
+
+
+	def __init__(self, s, prev_time=None):
+		self._raw = s
+		self.parse(prev_time)
+
+	def __getitem__(self, index):
+		return self.data[index]
+
+	def parse(self, prev_time):
+		date, rest = self._raw.split(" - ", 1)
+		if ':' in rest:
+			user, message = rest.split(": ", 1)
+			# message_type = 1 if message == "<Media omitted>" else 0
+			message_type = MT(int(message == "<Media omitted>"))
+		else:
+			user = "system"
+			message = rest
+			message_type = "SYSTEM"
+
+		temp_date_raw = re.findall("^(%s), " % self._DATE, date)[0]
+		temp_date = utils.date.parse_date(temp_date_raw)
+		temp_time = date.split(", ")[1]
+		temp_datetime = datetime.datetime(
+			temp_date.year,
+			temp_date.month,
+			temp_date.day,
+			int(temp_time[:2]),
+			int(temp_time[-2:])
+		)
+
+		if prev_time is None:
+			diff = datetime.timedelta(0)
+		else:
+			diff = temp_datetime - prev_time
+			if diff < datetime.timedelta(0):
+				diff = datetime.timedelta(0)
+
+
+		self.user          = user
+		self.message       = message
+		self.message_type  = message_type
+		self.date          = temp_datetime
+		self.relative_date = diff
+		self.data = [
+			self.user          ,
+			self.message       ,
+			self.message_type  ,
+			self.date          ,
+			self.relative_date ,
+		]
+
 class Data(object):
 
 	###############################################
 	############          INIT         ############
 	###############################################
 
-	def __init__(self, file_name='w'):
+	def __init__(self, file_name="data/w", debug=True):
 		self._file_name = file_name
+		self.debug = utils.Debug(debug)
 	
-	def init(self, debug=False, debug_time=None, exclude_system=True):
-		if debug and not debug_time:
-			debug_time = time.time()
+	def init(self, exclude_system=True, start_time=None, tab=0):
+		start = start_time or time.time()
 		self._read_data()
-		if debug:
-			print("        [*] %.3f _read_data done" % (time.time() - debug_time))
-		self.parse_lines(exclude_system=True)
-		if debug:
-			print("        [*] %.3f parse_lines done" % (time.time() - debug_time))
-		self.create_users()
-		if debug:
-			print("        [*] %.3f create_users done" % (time.time() - debug_time))
-		self.create_all_words()
-		if debug:
-			print("        [*] %.3f create_all_words done" % (time.time() - debug_time))
+		self.debug.print(tab=tab, msg="[*] %.3f _read_data done"       % (time.time() - start))
 
-	def init_all(self, debug=False, exclude_system=True):
+		self.parse_lines(exclude_system=True)
+		self.debug.print(tab=tab, msg="[*] %.3f parse_lines done"      % (time.time() - start))
+
+		self.create_users()
+		self.debug.print(tab=tab, msg="[*] %.3f create_users done"     % (time.time() - start))
+
+		self.create_all_words()
+		self.debug.print(tab=tab, msg="[*] %.3f create_all_words done" % (time.time() - start))
+
+	def init_all(self, exclude_system=True):
 		start = time.time()
-		if debug:
-			print("[*] init_all started")
-			print("    [*] %.3f init started" % (time.time() - start))
-			self.init(True, start, exclude_system=True)
-		else:
-			self.init()
-		
-		if debug:
-			print("    [*] %.3f init done" % (time.time() - start))
+		self.debug.print(tab=0, msg="[*] init_all started")
+
+		self.debug.print(tab=1, msg="[*] %.3f init started"                      % (time.time() - start))
+		self.init(exclude_system=exclude_system, start_time=start, tab=2)
+		self.debug.print(tab=1, msg="[*] %.3f init done"                         % (time.time() - start))
+
 		self.create_user_message_metadata()
-		if debug:
-			print("    [*] %.3f create_user_message_metadata done" % (time.time() - start))
-		self.create_user_message_metadata(True)
-		if debug:
-			print("    [*] %.3f create_user_message_metadata done" % (time.time() - start))
+		self.debug.print(tab=1, msg="[*] %.3f create_user_message_metadata done" % (time.time() - start))
+
+		self.create_user_media_metadata()
+		self.debug.print(tab=1, msg="[*] %.3f create_user_media_metadata done"   % (time.time() - start))
+
 		self.create_all_user_messages()
-		if debug:
-			print("    [*] %.3f create_all_user_messages done" % (time.time() - start))
+		self.debug.print(tab=1, msg="[*] %.3f create_all_user_messages done"     % (time.time() - start))
+
 		self.create_user_wpm()
-		if debug:
-			print("    [*] %.3f create_user_wpm done" % (time.time() - start))
+		self.debug.print(tab=1, msg="[*] %.3f create_user_wpm done"              % (time.time() - start))
+
 		self.create_user_hpm()
-		if debug:
-			print("    [*] %.3f create_user_hpm done" % (time.time() - start))
+		self.debug.print(tab=1, msg="[*] %.3f create_user_hpm done"              % (time.time() - start))
+
 		self.create_chat_blocks()
-		if debug:
-			print("    [*] %.3f create_chat_blocks done" % (time.time() - start))
+		self.debug.print(tab=1, msg="[*] %.3f create_chat_blocks done"           % (time.time() - start))
 		
-		if debug:
-			print("[*] loaded in %s seconds" % (time.time() - start))
+		self.debug.print(tab=0, msg="[*] loaded in %s seconds"                   % (time.time() - start))
 
 	def _read_data(self):
-		f = open(self._file_name, 'rb')
-		a = f.read()
-		f.close()
-		self.data = a.decode("utf8")
-		return self.data
+		self.data = open(self._file_name, 'rb').read().decode("utf8")
 
 	# returns [datetime, user, message, message_type, Relative_time]
 	def parse_lines(self, exclude_system=True):
@@ -211,71 +207,35 @@ class Data(object):
 			e.g. "[user] has changed the group name to \"abc:def\""
 		"""
 
-		self.lines_raw = P("DATE").findall(self.data)
+		self.lines_raw = Line.DATE.findall(self.data)
 
 		last_time = None
 		self.lines = []
 		for i in self.lines_raw:
-			date, rest = i.split(" - ", 1)
-			if ':' in rest:
-				user, message = rest.split(": ", 1)
-				# message_type = 1 if message == "<Media omitted>" else 0
-				message_type = MT(int(message == "<Media omitted>"))
-			elif exclude_system:
-				continue
-			else:
-				user = "system"
-				message = rest
-				message_type = MT(2)
+			temp = Line(i, last_time)
 
-			temp_date_raw = re.findall("^(\d{1,2}/\d{1,2}/\d\d), ", date)[0]
-			temp_date = utils.date.parse_date(temp_date_raw)
-			temp_hour = date[date.find(',')+2:]
-			temp_datetime = datetime.datetime(
-				temp_date.year,
-				temp_date.month,
-				temp_date.day,
-				int(temp_hour[:2]),
-				int(temp_hour[-2:])
-			)
+			self.lines.append(temp)
+			last_time = temp.date
 
-			if last_time:
-				diff = temp_datetime - last_time
-				if diff < datetime.timedelta(0):
-					diff = datetime.timedelta(0)
-			else:
-				diff = datetime.timedelta(0)
-			last_time = temp_datetime
-
-			self.lines.append((
-				temp_datetime, # date
-				user,
-				message,
-				message_type,
-				diff
-			))
-		return self.lines
+		return True
 
 	# get the usernames list
 	def create_users(self, first_name_only=False, anonymize=False):
 		"""
 		gets a unique list of all the users
-		This functions' flags change the value of self.users and the return value
+		This functions' flags change the value of self.users
 		However, these variables will exist anyway
 			self._users_anonymized
-			self._users
+			self._users_full_name
 			self._users_first_name
 		while self.users will be a copy of the list requested by the flags
 		"""
-		self.users = list(
-					set(
-						[i[MI("USER")] for i in self.lines]
-					)
-				)
 
 		# set returns alphabetical order, list "shuffles" it
 		# if anonymize: dont order
 		# else: order
+		self.users = list(set( i.user for i in self.lines ))
+
 		if "system" in self.users:
 			self.users.remove("system")
 
@@ -286,7 +246,7 @@ class Data(object):
 		self._users_anonymized = [self._user_name_format % i for i in range(len(self.users))]
 		
 		self.users.sort()
-		self._users = self.users[:]
+		self._users_full_name  = self.users[:]
 		self._users_first_name = [
 			(
 				i[1:-1]
@@ -310,56 +270,60 @@ class Data(object):
 	############        MESSAGES       ############
 	###############################################
 
-	# calculate amount of messages and percentage out of total messages
-	def create_user_message_metadata(self, media=False):
-		amount_of_user_messages = [
-			len([
-				i for i in self.lines
-				if
-					i[MI('USER')] == u
-				and
-					i[MI("TYPE")] == MT(int(media))
-			])
-			for u in self.users
-		]
+	# calculate amount of text-messages and percentage out of total text-messages
+	def create_user_message_metadata(self):
+		self.user_message_amount = [0]*len(self.users)
+		for i in filter(
+			lambda l: l.message_type == "MESSAGE",
+			self.lines
+		):
+			self.user_message_amount[self._users_full_name.index(i.user)] += 1
 
-		messages_amount = sum(amount_of_user_messages)
-		percent_of_messages = [float(i)/messages_amount for i in amount_of_user_messages]
+		amount_of_user_messages = sum(self.user_message_amount)
+		self.user_message_percentage = [float(i)/amount_of_user_messages for i in self.user_message_amount]
 
-		if media:
-			self.user_media_amount = amount_of_user_messages
-			self.user_media_percentage = percent_of_messages
-		else:
-			self.user_message_amount = amount_of_user_messages
-			self.user_message_percentage = percent_of_messages
+	# calculate amount of media-messages and percentage out of total media-messages
+	def create_user_media_metadata(self):
+		self.user_media_amount = [0]*len(self.users)
+		for i in filter(
+			lambda l: l.message_type == "MEDIA",
+			self.lines
+		):
+			self.user_media_amount[self._users_full_name.index(i.user)] += 1
 
-		return zip(self.users, amount_of_user_messages, percent_of_messages)
-		# return [user, #messages, %messages]
+		amount_of_user_media = sum(self.user_media_amount)
+		self.user_media_percentage = [float(i)/amount_of_user_media for i in self.user_media_amount]
 
 	# get all the messages that the user sent
 	def create_all_user_messages(self):
 		self.messages_by_user = [
 			[
-				i[MI('MESSAGE')]
+				i.message
 				for i in self.lines
 				if
-					i[MI("USER")] == u
+					i.user == u
 				and
-					i[MI("TYPE")] == MT(0)
+					i.message_type == "MESSAGE"
 			]
-			for u in self.users
+			for u in self._users_full_name
 		]
 		self.messages_by_user_combined = list(
 			map(
-				lambda x: '\n'.join(x),
+				'\n'.join,
 				self.messages_by_user
 			)
 		)
-		self.user_words_amount = list(map(len, self.messages_by_user_combined))
-		return self.messages_by_user
+		self.user_words_amount = list(map(
+			lambda x: len(x.split()),
+			self.messages_by_user_combined
+		))
 
-	def get_messages(self, message_filter):
+	def get_messages(self, message_filter=None):
 		# validate the message_filter parameter
+		# all messages
+		if message_filter is None:
+			# return a generator of self.lines
+			return (i for i in self.lines)
 		# a function
 		if "__call__" in dir(message_filter):
 			filter_function = message_filter
@@ -379,12 +343,16 @@ class Data(object):
 
 			filter_function = lambda x: bool(re_pattern.findall( x[MI("MESSAGE")] ))
 
-		return list(filter(
+		return filter(
 			filter_function,
 			self.lines
-		))
+		)
 
 	def get_following_messages(self, filter_function, amount=10, stop_after_another=True, exclude_function=None):
+		"""
+		filter_function  = lambda line(str): bool
+		exclude_function = lambda next_line(str), prev_line(str): bool
+		"""
 		messages = []
 		# go through all the lines
 		for index, i in enumerate(self.lines):
@@ -419,10 +387,16 @@ class Data(object):
 	###############################################
 
 	# get Words Per Message
-	def create_user_wpm(self, ignore_short_messages=0):
-		if not self.__dict__.get("messages_by_user"):
-			get_all_user_messages(self.lines, self.users)
-		self.user_wpm = [
+	def get_user_wpm(self, ignore_short_messages=0):
+		"""
+		count the total amount of words,
+		from all the messages sent by the user
+		which has more than ignore_short_messages words
+		if ignore_short_messages > 0
+		else, from all the messages
+		and divide by the amount of messages
+		"""
+		return [
 			# join all the user messages, and then split by whitespace
 			float( # get accurate division
 				sum( # combine all the messages
@@ -444,18 +418,24 @@ class Data(object):
 			len(self.messages_by_user[i])
 			for i in range(len(self.users))
 		]
-		return self.user_wpm
+
+	# a create function, hust for the convension
+	def create_user_wpm(self):
+		self.user_wpm = self.get_user_wpm()
 
 	# get H Per Message
 	def create_user_hpm(self):
-		if not self.__dict__.get("messages_by_user_combined"):
-			get_all_user_messages()
-				# H Per Message
-
-		all_user_h = list(map(P("H").findall, self.messages_by_user_combined))
+		# a list of all the H's ever sent by each user
+		all_user_h = list(map(
+			P("H").findall,
+			self.messages_by_user_combined
+		))
 		
-		user_h_messages = list(map(len, all_user_h))
-		self.user_h_amount = [len(''.join(h)) for h in all_user_h]
+		# total H's sent by each user
+		self.user_h_amount = [
+			sum(map(len, user_h))
+			for user_h in all_user_h
+		]
 
 		# H per message
 		self.user_hpm = list( # convert map to list
@@ -472,22 +452,25 @@ class Data(object):
 		self.user_hpd = [
 			float(self.user_h_amount[i])
 			 /
-			len(self.messages_by_user_combined[i].replace(' ', ''))
+			len(
+				# ''.join(data.split) - remove whitespace
+				''.join( self.messages_by_user_combined[i].split() )
+			)
 			for i in range(len(self.users))
 		]
-		return all_user_h, user_h_messages, self.user_h_amount, self.user_hpm, self.user_hpd
 
 	# create a list of all the words
 	def create_all_words(self):
-		self.words = sum([
-			P("WORDS").findall(i[MI("MESSAGE")])
+		self.words_all = sum([
+			P("WORDS").findall(i.message)
 			for i in self.lines
-			if i[MI("TYPE")] == MT(0) 
+			if i.message_type == "MESSAGE"
 		], [])
-		self.words_histogram = utils.counter(self.words)
-		return self.words
+		self.words_histogram = utils.counter(self.words_all)
+		self.words_unique = list(set(self.words_all))
+		self.words_unique.sort()
 
-	def get_most_common_words(self, amount=10, display=False, top_first=False, multiple_lines=False):
+	def get_most_common_words(self, amount=10, display=False, top_first=True):
 		words = list(self.words_histogram) # copy
 
 		words.sort(key=lambda x: x[1]) # sort by the word
@@ -497,13 +480,6 @@ class Data(object):
 
 		if top_first:
 			words = words[::-1]
-
-		# if multiple_lines:
-		# 	amount_per_line = multiple_lines // (max(map(
-		# 		lambda x: len("%04d - %s" % (i[1], i[0][::-1])),
-		# 		words
-		# 	)) + 2)
-
 
 		if display:
 			print('\n'.join(["%04d - %s" % (i[1], i[0][::-1]) for i in words]))
@@ -519,15 +495,14 @@ class Data(object):
 
 	def get_all_emojis(self, combined=True):
 		if combined:
-			return re.findall(
-				utils.emoji.PATTERN,
-				'\n'.join(self.messages_by_user_combined)
-			)
+			combine = lambda x: sum(x, [])
 		else:
-			return [
-				re.findall(utils.emoji.PATTERN, i)
-				for i in self.messages_by_user_combined
-			]
+			combine = lambda x: x
+
+		return combine([
+			re.findall(utils.emoji.PATTERN, i)
+			for i in self.messages_by_user_combined
+		])
 	
 	def plot_emojis(self, amount=5):
 		# a = wp.d.get_all_emojis()
@@ -1265,10 +1240,10 @@ class Data(object):
 
 def print_line(x):
 	print("%-6s - %s (%6.2f) - %s" % (
-		x[1].split()[0], # sender
+		x[1].split()[0],                 # sender
 		x[0].strftime("%Y/%m/%d_%H:%M"), # date
-		x[4].total_seconds() / 60**2, # diff
-		x[2][::-1] # message
+		x[4].total_seconds() / 60**2,    # diff
+		x[2][::-1]                       # message
 	))
 
 ###############################################
@@ -1346,27 +1321,26 @@ def whos_the_funniest(data, plot=True, following_messages_amount=10):
 		return user_h_per_media
 
 if __name__ == '__main__':
-	input_file = [i[len("in:"):] for i in sys.argv[1:] if i.startswith("in:")]
+	input_file = [i[len("in:"   ):] for i in sys.argv[1:] if i.startswith("in:"   )]
+	debug      = [i[len("debug:"):] for i in sys.argv[1:] if i.startswith("debug:")]
+	dump       = [i[len("dump:" ):] for i in sys.argv[1:] if i.startswith("dump:" )]
+
+	debug = int(debug[0]) if debug else True
+
 	if input_file:
-		d = Data(input_file[0])
+		d = Data(input_file[0], debug=debug)
 	else:
-		d = Data()
+		d = Data(               debug=debug)
 
-	debug = [i[len("debug:"):] for i in sys.argv[1:] if i.startswith("debug:")]
-	if debug:
-		d.init_all(debug=int(debug[0]), exclude_system=True)
-	else:
-		d.init_all(debug=True, exclude_system=True)
+	d.init_all(exclude_system=True)
 
-	dump = [i[len("dump:"):] for i in sys.argv[1:] if i.startswith("dump:")]
 	if dump:
 		dump_file = dump[0]
 		if dump_file:
-			d.print_features(file=open(dump_file, 'w'))
+			d.print_features(file=open(dump_file, time.strftime("data/w_%Y.%m.%d_%H:%M")))
 		else:
 			d.print_features()
 	
 else:
-	d = Data()
-	d.init_all(debug=True, exclude_system=True)
-	
+	d = Data(debug=True)
+	d.init_all(exclude_system=True)
