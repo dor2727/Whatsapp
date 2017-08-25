@@ -1161,25 +1161,25 @@ class Data(object):
 				active_days["Sat"],
 				*[	activity["user%d" % i]["day"]["message"]
 					for i in range(len(self.users)) ],
-				activity["total"]["day"]["message"],
+				# activity["total"]["day"]["message"],
 				*[	activity["user%d" % i]["day"]["media"]
 					for i in range(len(self.users)) ],
-				activity["total"]["day"]["media"],
+				# activity["total"]["day"]["media"],
 				*[	activity["user%d" % i]["day"]["words"]
 					for i in range(len(self.users)) ],
-				activity["total"]["day"]["words"],
+				# activity["total"]["day"]["words"],
 				*[	activity["user%d" % i]["day"]["emoji"]
 					for i in range(len(self.users)) ],
-				activity["total"]["day"]["emoji"],
+				# activity["total"]["day"]["emoji"],
 				*[	activity["user%d" % i]["day"]["emoticon"]
 					for i in range(len(self.users)) ],
-				activity["total"]["day"]["emoticon"],
+				# activity["total"]["day"]["emoticon"],
 				*[	activity["user%d" % i]["message"]["emoji"]
 					for i in range(len(self.users)) ],
-				activity["total"]["message"]["emoji"],
+				# activity["total"]["message"]["emoji"],
 				*[	activity["user%d" % i]["message"]["emoticon"]
 					for i in range(len(self.users)) ],
-				activity["total"]["message"]["emoticon"],
+				# activity["total"]["message"]["emoticon"],
 				conversations["week"],
 				conversations["week 1<"],
 				conversations["emotions"],
@@ -1221,25 +1221,25 @@ class Data(object):
 				'active_days["Sat"]',
 				*[	'activity["user%d"]["day"]["message"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["day"]["message"]',
+				# 'activity["total"]["day"]["message"]',
 				*[	'activity["user%d"]["day"]["media"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["day"]["media"]',
+				# 'activity["total"]["day"]["media"]',
 				*[	'activity["user%d"]["day"]["words"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["day"]["words"]',
+				# 'activity["total"]["day"]["words"]',
 				*[	'activity["user%d"]["day"]["emoji"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["day"]["emoji"]',
+				# 'activity["total"]["day"]["emoji"]',
 				*[	'activity["user%d"]["day"]["emoticons"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["day"]["emoticons"]',
+				# 'activity["total"]["day"]["emoticons"]',
 				*[	'activity["user%d"]["message"]["emoji"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["message"]["emoji"]',
+				# 'activity["total"]["message"]["emoji"]',
 				*[	'activity["user%d"]["message"]["emoticons"]' % i
 					for i in range(len(self.users)) ],
-				'activity["total"]["message"]["emoticons"]',
+				# 'activity["total"]["message"]["emoticons"]',
 				'conversations["week"]',
 				'conversations["week 1<"]',
 				'conversations["emotions"]',

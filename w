@@ -1,1 +1,0 @@
-/home/me/Projects/Whatsapp_data/chat_Dana
