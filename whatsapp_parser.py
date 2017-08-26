@@ -674,7 +674,7 @@ class Data(object):
 
 		#### division by time    ####
 
-		timedelta_in_minutes = lambda x: x[MI("RELATIVE")].total_seconds() / 60
+		timedelta_in_minutes = lambda x: x.relative_date.total_seconds() / 60
 		tim = timedelta_in_minutes
 
 		def is_night(x):
@@ -726,7 +726,7 @@ class Data(object):
 				return False
 
 			# check how far is the first message of the next chat block
-			if chats[index+1][0][MI("RELATIVE")].total_seconds() > 24*60*60:
+			if chats[index+1][0].relative_date.total_seconds() > 24*60*60:
 				# the other side ignored your message
 				ignored_by_time = True
 			else:
@@ -825,46 +825,41 @@ class Data(object):
 	def _print_chat(self, i):
 		if type(i) is int:
 			i = self.chats[i]
-		print('\n'.join(map(
-			lambda x: "%-6s - %s (%6.2f) - %s" % (
-				x[1].split()[0], # sender
-				x[0].strftime("%Y/%m/%d_%H:%M"), # date
-				x[4].total_seconds() / 60**2, # diff
-				x[2][::-1] # message
-			),
-			i
-		)))
+		print('\n'.join(map(repr, i)))
 
 	###############################################
 	############       FEATURES        ############
 	###############################################
 
 	def get_features_ratio(self):
+		if len(self.users) != 2:
+			return(bool(print("More than 2 users are not allowed!")))
+
 		ratio = {}
 		ratio_description = {}
 
 		# message ratio
 		ratio_description["message"] = "[amount of messages from] user0 / user1"
-		ratio["message"] = numpy.divide(*self.user_message_amount)
+		ratio            ["message"] = numpy.divide(*self.user_message_amount)
 
 		# media ratio
-		ratio_description["media"] = "[amount of media from] user0 / user1"
-		ratio["media"] = numpy.divide(*self.user_media_amount)
+		ratio_description["media"]   = "[amount of media from] user0 / user1"
+		ratio            ["media"]   = numpy.divide(*self.user_media_amount)
 
 		# words ratio
-		ratio_description["words"] = "[amount of words sent by] user0 / user1"
-		ratio["words"] = numpy.divide(*self.user_words_amount)
+		ratio_description["words"]   = "[amount of words sent by] user0 / user1"
+		ratio            ["words"]   = numpy.divide(*self.user_words_amount)
 
 		# long_messages ratio
 		ratio_description["long messages"] = "[amount of messages with more than 10 words from] user0 / user1"
-		_long_messages = self.get_messages(lambda x:len(x[MI('M')].split())>=10)
+		_long_messages = self.get_messages(lambda x:len(x.message.split())>=10)
 		_long_messages_amount_per_user = list(map(
 			# iterate all the users
 			# and count how many long messages each of them has
 			lambda u: len(list(filter(
 				# iterate all the long messages
 				# and filter out only messages by the user
-				lambda m: m[MI('U')] == u,
+				lambda m: m.user == u,
 				_long_messages
 			))),
 			self.users
@@ -878,7 +873,7 @@ class Data(object):
 		_messages_with_h = self.get_messages(P("H"))
 		_messages_with_h_per_user = list(map(
 			lambda u: len(list(filter(
-				lambda m: m[MI('U')] == u,
+				lambda m: m.user == u,
 				_messages_with_h
 			))),
 			self.users
@@ -889,7 +884,7 @@ class Data(object):
 
 		ratio_description["conversations"] = "[amount of conversations started by] user0 / user1"
 		_conversations_started = utils.counter([
-				c[0][MI("USER")]
+				c[0].user
 				for c in self.chats
 			])
 		ratio["conversations"] = numpy.divide(*[
@@ -939,11 +934,11 @@ class Data(object):
 		}
 		active_hours = dict(zip(["07-12", "12-17", "17-21", "21-07"], [0]*4))
 		for i in self.lines:
-			if   7  <= i[MI("DATE")].hour < 12:
+			if   7  <= i.date.hour < 12:
 				active_hours["07-12"] += 1
-			elif 12 <= i[MI("DATE")].hour < 17:
+			elif 12 <= i.date.hour < 17:
 				active_hours["12-17"] += 1
-			elif 17 <= i[MI("DATE")].hour < 21:
+			elif 17 <= i.date.hour < 21:
 				active_hours["17-21"] += 1
 			else:
 				active_hours["21-07"] += 1
@@ -1014,7 +1009,7 @@ class Data(object):
 
 		### utility functions
 		def _amount_of_senders(x):
-			return len(set( i[MI("USER")] for i in x ))
+			return len(set( i.user for i in x ))
 		def get_multi_user_chats():
 			return filter(
 				lambda x: _amount_of_senders(x) > 1,
@@ -1027,7 +1022,7 @@ class Data(object):
 			))
 		def get_user_started_chats(index):
 			return filter(
-				lambda x: x[0][MI("USER")] == self.users[index],
+				lambda x: x[0].user == self.users[index],
 				get_multi_user_chats()
 			)
 		def get_index_of_first_message_of_second_user(chat):
@@ -1037,12 +1032,12 @@ class Data(object):
 			and than the gc deletes the filter object
 			"""
 			return chat.index(next(filter(
-				lambda x: x[MI("USER")] != chat[0][MI("USER")],
+				lambda x: x.user != chat[0].user,
 				chat
 			)))
 
 		# how long is the chat (in days)
-		_chat_length = (self.lines[-1][0] - self.lines[0][0]).days
+		_chat_length = (self.lines[-1].date - self.lines[0].date).days
 
 		# conversations per week
 		conversations_description["week"] = "amount of conversations per week"
@@ -1054,7 +1049,7 @@ class Data(object):
 
 		# diff time between conversations
 		_diff_time_between_conversations = list(map(
-			lambda x: x[0][MI("RELATIVE")].total_seconds(),
+			lambda x: x[0].relative_date.total_seconds(),
 			self.chats[1:]
 		))
 		conversations_description["avg diff time"] = "average of diff time between following conversations"
@@ -1070,7 +1065,7 @@ class Data(object):
 			if _amount_of_senders(c) == 1:
 				_ignored_chats[
 					self.users.index(
-						c[0][MI("USER")]
+						c[0].user
 					) 
 				] += 1
 		for i in range(len(self.users)):
@@ -1085,7 +1080,7 @@ class Data(object):
 			diffs = []
 			for c in get_user_started_chats(u):
 				i = get_index_of_first_message_of_second_user(c)
-				diff = c[i][MI("DATE")] - c[i-1][MI("DATE")]
+				diff = c[i].date - c[i-1].date
 				diffs.append(diff.total_seconds())
 			conversations["user%d avg between messages" % u] = numpy.average(diffs)
 			conversations["user%d std between messages" % u] = numpy.std(diffs)
@@ -1093,9 +1088,9 @@ class Data(object):
 		conversations_description["emotions"] = "average amount of emojis and emoticons in conversations"
 		conversations["emotions"] = sum(map(
 			lambda c: len(
-				re.findall(utils.emoji.PATTERN, '\n'.join(i[MI("MESSAGE")] for i in c))
+				re.findall(utils.emoji.PATTERN, '\n'.join(i.message for i in c))
 				 +
-				re.findall(utils.smily.PATTERN, '\n'.join(i[MI("MESSAGE")] for i in c))
+				re.findall(utils.smily.PATTERN, '\n'.join(i.message for i in c))
 			),
 			self.chats
 		)) / len(self.chats)
@@ -1306,9 +1301,9 @@ def plot_words(words, amount=15):
 
 def whos_the_funniest(data, plot=True, following_messages_amount=10):
 	def is_media(x):
-		return x[MI("TYPE")] == "MEDIA"
+		return x.message_type == "MEDIA"
 	def is_same_user(x,y):
-		return x[MI("USER")] == y[MI("USER")]
+		return x.user == y.user
 
 	# get all the media messages
 	all_media = data.get_following_messages(is_media, exclude_function=is_same_user, amount=following_messages_amount)
@@ -1317,7 +1312,7 @@ def whos_the_funniest(data, plot=True, following_messages_amount=10):
 	all_media_formatter = [
 		(
 			i[0],
-			'\n'.join([j[MI("MESSAGE")] for j in i[1]])
+			'\n'.join([j.message for j in i[1]])
 		)
 		for i in all_media
 	]
@@ -1342,7 +1337,7 @@ def whos_the_funniest(data, plot=True, following_messages_amount=10):
 					map( # get only amount of H from each message
 						lambda x: x[1],
 						filter( # filter only messages by the user
-							lambda x: x[0][MI("USER")] == u,
+							lambda x: x[0].user == u,
 							media_h_amount
 						)
 					)
@@ -1353,7 +1348,7 @@ def whos_the_funniest(data, plot=True, following_messages_amount=10):
 		( # amount of messages by the user
 			len( # count amount of messages
 				list(filter( # filter only messages by the user
-					lambda x: x[0][MI("USER")] == u,
+					lambda x: x[0].user == u,
 					media_h_amount
 				))
 			)
