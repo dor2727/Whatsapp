@@ -3,6 +3,7 @@ import re
 import enum
 import utils.re
 from utils.enum import enum_getter
+from collections import Counter
 
 #################################
 ########## EMOJI DATA  ##########
@@ -643,3 +644,9 @@ PATTERN_SAD = re.compile(
 	# single_char, multiple_char = single_multiple_char(directory_content)
 	# single_char_re, multiple_char_re = single_multiple_char_re(single_char, multiple_char)
 
+
+def counter(data):
+	return [
+		[ emoji_to_hex(i[0]), i[1] ]
+		for i in Counter(data).items()
+	]

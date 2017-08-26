@@ -83,8 +83,9 @@ class Line(object):
 	DATE = re.compile(u"(%s - .*)\n" % _DATE_AND_TIME)
 
 
-	def __init__(self, s, prev_time=None):
+	def __init__(self, s, index=None, prev_time=None):
 		self._raw = s
+		self.index = index
 		self.parse(prev_time)
 
 	def __getitem__(self, index):
@@ -132,6 +133,15 @@ class Line(object):
 			self.date          ,
 			self.relative_date ,
 		]
+
+	def __repr__(self):
+		return ("%-6s - %s (%6.2f) - %s" % (
+			self.user         .split()[0],                 # sender
+			self.date         .strftime("%Y/%m/%d_%H:%M"), # date
+			self.relative_date.total_seconds() / 60**2,    # diff
+			self.message      [::-1]                       # message
+		))
+
 
 class Data(object):
 
@@ -210,12 +220,14 @@ class Data(object):
 		self.lines_raw = Line.DATE.findall(self.data)
 
 		last_time = None
+		counter = 0
 		self.lines = []
 		for i in self.lines_raw:
-			temp = Line(i, last_time)
+			temp = Line(i, counter, last_time)
 
 			self.lines.append(temp)
 			last_time = temp.date
+			counter += 1
 
 		return True
 
@@ -341,7 +353,7 @@ class Data(object):
 			else:
 				return(bool(print("Unknown message_filter type")))
 
-			filter_function = lambda x: bool(re_pattern.findall( x[MI("MESSAGE")] ))
+			filter_function = lambda x: bool(re_pattern.findall( x.message ))
 
 		return filter(
 			filter_function,
@@ -493,7 +505,7 @@ class Data(object):
 	def get_emoji_messages(self):
 		return self.get_messages(utils.emoji.PATTERN)
 
-	def get_all_emojis(self, combined=True):
+	def get_all_emojis(self, combined=False):
 		if combined:
 			combine = lambda x: sum(x, [])
 		else:
@@ -505,16 +517,16 @@ class Data(object):
 		])
 	
 	def plot_emojis(self, amount=5):
-		# a = wp.d.get_all_emojis()
-		# b = Counter(a)
-		# c = list(b.items())
-		# d = list(map(lambda x:[wp.utils.emoji.emoji_to_hex(x[0]), x[1]], c))
-		data = list(map(
-			lambda x: [ utils.emoji.emoji_to_hex(x[0]), x[1] ],
-			utils.counter(self.get_all_emojis())
-		))
+		None # no docstring
+		"""
+		psudo-code
+		a = wp.d.get_all_emojis()
+		b = Counter(a)
+		c = list(b.items())
+		d = list(map(lambda x:[wp.utils.emoji.emoji_to_hex(x[0]), x[1]], c))
+		"""
 		return utils.plot.emoji_bar(
-			data,
+			utils.emoji.counter(self.get_all_emojis(True)),
 			amount=amount,
 			sort=lambda x: x[1], # sort by the value of the word and not the amount
 		)
@@ -522,15 +534,8 @@ class Data(object):
 		if len(self.users) != 2:
 			return(bool(print("More than 2 users are not allowed!")))
 		data = map(
-			utils.counter,
-			self.get_all_emojis(False)
-		)
-		data = map(
-			lambda x: [
-				[ utils.emoji.emoji_to_hex(i[0]), i[1] ]
-				for i in x
-			],
-			data
+			utils.emoji.counter,
+			self.get_all_emojis()
 		)
 		return utils.plot.emoji_bar_2(
 			list(data),
@@ -552,23 +557,22 @@ class Data(object):
 			for i in utils.smily.EMOTICON_NAMES
 		]
 
-	def get_all_emoticons(self, combined=True):
+	def get_all_emoticons(self, combined=False):
 		if combined:
-			return re.findall(
-				utils.smily.PATTERN, 
-				'\n'.join(self.messages_by_user_combined)
-			)
+			combine = lambda x: sum(x, [])
 		else:
-			return [
-				re.findall(utils.smily.PATTERN, i)
-				for i in self.messages_by_user_combined
-			]
+			combine = lambda x: x
 
+		return combine([
+			re.findall(utils.smily.PATTERN, i)
+			for i in self.messages_by_user_combined
+		])
+		
 	def plot_emoticons(self, amount=10):
-		data = utils.counter(self.get_all_emoticons())
+		data = utils.counter(self.get_all_emoticons(True))
 		return utils.plot.hist(
 			data,
-			amount=max(amount, len(data)),
+			amount=amount,
 			sort="counter"
 		)
 	def plot_emoticons_by_users(self, amount=5):
@@ -576,7 +580,7 @@ class Data(object):
 			return(bool(print("More than 2 users are not allowed!")))
 		data = map(
 			utils.counter,
-			self.get_all_emoticons(False)
+			self.get_all_emoticons()
 		)
 		return utils.plot.hist_2(
 			list(data),
@@ -587,31 +591,81 @@ class Data(object):
 	def plot_emoticons_by_type(self):
 		return utils.plot.hist(
 			list(map(
-				utils.smily.emoticon_to_type,
-				self.get_all_emoticons()
+				utils.smily.get_emoticon_type,
+				self.get_all_emoticons(True)
 			)),
 			amount=len(utils.smily.EMOTICON_NAMES),
 			sort="counter"
 		)
+	def plot_emoticons_by_users_by_type(self, amount=5):
+		if len(self.users) != 2:
+			return(bool(print("More than 2 users are not allowed!")))
+
+		"""
+		psudo-code
+		a = self.get_all_emoticons(False) # dont group
+		# a is a list of lists of emoticons
+		b = [
+			map( utils.smily.get_emoticon_type, i )
+			for i in a
+		]
+		c = [
+			map( utils.counter, i )
+			for i in b
+		]
+
+		ugly one-liner
+		list(map(lambda x:wp.utils.counter(list(map(wp.utils.smily.get_emoticon_type,x))),wp.d.get_all_emoticons(0)))
+
+		list(
+			map(
+				lambda x: wp.utils.counter(
+					list(
+						map(
+							wp.utils.smily.get_emoticon_type,
+							x
+						)
+					)
+				),
+				wp.d.get_all_emoticons(0)
+			)
+		)
+		"""
+		return utils.plot.hist_2(
+			list(map( # iterate each user
+				lambda user_list_of_emoticons: utils.counter(
+					map( # iterate each emoticon
+						utils.smily.get_emoticon_type,
+						user_list_of_emoticons
+					)
+				),
+				self.get_all_emoticons(False)
+			)),
+			amount=amount,
+			sort="counter",
+			title=self._users_first_name
+		)
+	
 
 	###############################################
 	############         CHATS         ############
 	###############################################
 
-	def _print_timestemp(self, index=None, **kwargs):
+	def _print_timestemp(self, index=None, format="%(user)-20s : %(date)s : %(relative)s", **kwargs):
 		if index is None:
 			index = range(len(self.lines))
 		if type(index) is int:
 			index = [index]
 		if "__iter__" not in dir(index):
 			return(bool(print("x needs to be int or list")))
+
 		for x in index:
-			r = self.timestemps[x][TI("RELATIVE")]
-			print("%s : %s : %s" % (
-				"%-20s" % self.timestemps[x][TI("USER")],
-				self.timestemps[x][TI("ABSOLUTE")].strftime("%Y/%m/%d_%H:%M"),
-				"%02dw_%02dd_%02d:%02d" % (r.days // 7, r.days % 7, r.seconds // (60*60), r.seconds // 60 % 60)
-			), **kwargs)
+			r = self.lines[x].relative_date
+			print(format % ({
+				"user"     : self.lines[x].user,
+				"date"     : self.lines[x].date.strftime("%Y/%m/%d_%H:%M"),
+				"relative" : "%02dw_%02dd_%02d:%02d" % (r.days // 7, r.days % 7, r.seconds // (60*60), r.seconds // 60 % 60)
+			}), **kwargs)
 
 	def create_chat_blocks(self):
 		#############################
@@ -637,7 +691,7 @@ class Data(object):
 			# 8AM will be replaced by 11PM in case of a weekend
 			"""
 			_WEEKEND = [4,5] # 0 is monday, 4,5 is friday,saturday
-			return not (11 if x[MI("DATE")].weekday() in _WEEKEND else 8) < x[MI("DATE")].hour < 22
+			return not (11 if x.date.weekday() in _WEEKEND else 8) < x.date.hour < 22
 		def is_after_night(x):
 			"""
 			allow the message to be up to 2 hours after the wake-up
@@ -646,19 +700,19 @@ class Data(object):
 				check if there is a reasonable time difference
 			"""
 			_WEEKEND = [4,5] # 0 is monday, 4,5 is friday,saturday
-			morning = (11 if x[MI("DATE")].weekday() in _WEEKEND else 8)
+			morning = (11 if x.date.weekday() in _WEEKEND else 8)
 			morning += 2
 			after_night = (
-				x[MI("DATE")].hour < morning
+				x.date.hour < morning
 				 or
-				x[MI("DATE")].hour > 22
+				x.date.hour > 22
 			)
 			return after_night
 
 		#### division by sender  ####
 
 		def amount_of_senders(x):
-			return len(set( i[MI("USER")] for i in x ))
+			return len(set( i.user for i in x ))
 		def is_single_sender(x):
 			return amount_of_senders(x) == 1
 		def is_being_ignored(index):
@@ -1237,14 +1291,6 @@ class Data(object):
 		print(", ".join(self.users), **kwargs)
 		for i in list(zip(*l)):
 			print("%-43s : %s" % i[::-1], **kwargs)
-
-def print_line(x):
-	print("%-6s - %s (%6.2f) - %s" % (
-		x[1].split()[0],                 # sender
-		x[0].strftime("%Y/%m/%d_%H:%M"), # date
-		x[4].total_seconds() / 60**2,    # diff
-		x[2][::-1]                       # message
-	))
 
 ###############################################
 ############        EXAMPLES       ############
