@@ -13,52 +13,6 @@ from collections import Counter
 P  = utils.enum.enum_getter(utils.re.PATTERNS)
 UP = utils.enum.enum_getter(utils.re.UNICODE_PATTERNS)
 
-class MESSAGE_TYPE(enum.Enum):
-	MESSAGE = 0
-	MSG     = MESSAGE
-	M       = MESSAGE
-	MEDIA   = 1
-	MD      = MEDIA
-	SYSTEM  = 2
-	SYS     = SYSTEM
-	S       = SYSTEM
-MT = utils.enum.enum_getter(MESSAGE_TYPE)
-
-class MESSAGE_ITEMS(enum.Enum):
-	USER     = 0
-	U        = USER
-	MESSAGE  = 1
-	MSG      = MESSAGE
-	M        = MESSAGE
-	TYPE     = 2
-	T        = TYPE
-	DATE     = 3
-	D        = DATE
-	RELATIVE = 4
-	R        = RELATIVE
-MI = utils.enum.enum_getter(MESSAGE_ITEMS)
-
-def _get_non_letters(self, data):
-	# data = '\n'.join(self.messages_by_user_combined)
-	data = re.sub(P("WORDS")                  , '', data)
-	data = re.sub(P("PUNCTUATIONS")           , '', data)
-	data = re.sub(P("HEBREW_PUNCTUATIONS")    , '', data)
-	data = re.sub(P("NUMBER")                 , '', data)
-	data = re.sub(P("OLD_UNIOCDE")            , '', data)
-	data = re.sub(P("OTHER")                  , '', data)
-	data = re.sub('\s'                        , '', data)
-	data = re.sub(UP("EXTENDED_ASCII")        , '', data)
-	data = re.sub(UP("HEBREW")                , '', data)
-	data = re.sub(UP("ARABIC")                , '', data)
-	data = re.sub(UP("GENERAL_PUNCTUATION")   , '', data)
-	data = re.sub(UP("CURRENCY")              , '', data)
-	data = re.sub(UP("MATHEMATICAL_OPERATORS"), '', data)
-	data = re.sub(UP("PRIVATE_USE")           , '', data)
-	# I acctually don't remember why did I comment these lines
-	# data = re.sub(UP("EMOTICONS")             , '', data)
-	# data = re.sub(UP("MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS"), '', data)
-	return data
-
 class Line(object):
 	"""
 	parses the data and splits into messages
@@ -75,7 +29,7 @@ class Line(object):
 		e.g. "[user] has changed the group name to \"abc:def\""
 	"""
 
-		# split messages by the date pattern
+	# split messages by the date pattern
 	# "[date], [time] - .*"
 	_DATE = "\\d{1,2}/\\d{1,2}/\\d\\d"
 	_TIME = "\\d\\d\:\\d\\d"
@@ -95,8 +49,7 @@ class Line(object):
 		date, rest = self._raw.split(" - ", 1)
 		if ':' in rest:
 			user, message = rest.split(": ", 1)
-			# message_type = 1 if message == "<Media omitted>" else 0
-			message_type = MT(int(message == "<Media omitted>"))
+			message_type = "MEDIA" if message == "<Media omitted>" else "MESSAGE"
 		else:
 			user = "system"
 			message = rest

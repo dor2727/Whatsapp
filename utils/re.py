@@ -87,3 +87,25 @@ class UNICODE_PATTERNS(enum.Enum):
 	PRIVATE_USE                           = re.compile("[\ue000-\uf8ff]+")
 	EMOTICONS                             = re.compile("[\U0001f600-\U0001f64f]+")
 	MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS = re.compile("[\U0001f300-\U0001f5ff]+")
+
+
+def _get_non_letters(self, data):
+	# data = '\n'.join(self.messages_by_user_combined)
+	data = re.sub(PATTERNS.WORDS                         , '', data)
+	data = re.sub(PATTERNS.PUNCTUATIONS                  , '', data)
+	data = re.sub(PATTERNS.HEBREW_PUNCTUATIONS           , '', data)
+	data = re.sub(PATTERNS.NUMBER                        , '', data)
+	data = re.sub(PATTERNS.OLD_UNIOCDE                   , '', data)
+	data = re.sub(PATTERNS.OTHER                         , '', data)
+	data = re.sub('\s'                                   , '', data)
+	data = re.sub(UNICODE_PATTERNS.EXTENDED_ASCII        , '', data)
+	data = re.sub(UNICODE_PATTERNS.HEBREW                , '', data)
+	data = re.sub(UNICODE_PATTERNS.ARABIC                , '', data)
+	data = re.sub(UNICODE_PATTERNS.GENERAL_PUNCTUATION   , '', data)
+	data = re.sub(UNICODE_PATTERNS.CURRENCY              , '', data)
+	data = re.sub(UNICODE_PATTERNS.MATHEMATICAL_OPERATORS, '', data)
+	data = re.sub(UNICODE_PATTERNS.PRIVATE_USE           , '', data)
+	# I acctually don't remember why did I comment these lines
+	# data = re.sub(UP("EMOTICONS")             , '', data)
+	# data = re.sub(UP("MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS"), '', data)
+	return data
