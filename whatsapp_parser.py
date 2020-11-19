@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 
 from collections import Counter
 
-P  = utils.enum.enum_getter(utils.re.PATTERNS)
-UP = utils.enum.enum_getter(utils.re.UNICODE_PATTERNS)
+P  = utils.enum.enum_getter(utils.regex.PATTERNS)
+UP = utils.enum.enum_getter(utils.regex.UNICODE_PATTERNS)
 
 class Line(object):
 	"""
@@ -1313,6 +1313,28 @@ def whos_the_funniest(data, plot=True, following_messages_amount=10):
 		utils.plot.bar(user_h_per_media, data._users_first_name)
 	else:
 		return user_h_per_media
+
+def amount_of_messages(data, date=None):
+	today = date or datetime.date.today()
+	return len(list(filter(
+		lambda i: i.date.date() == today,
+		data.lines
+	)))
+def amount_of_messages_daily_avg(data):
+	amount_of_days = (data.lines[-1].date.date() - data.lines[0].date.date()).days
+	amount_of_messages = len(data.lines)
+	return amount_of_messages / amount_of_days
+def amount_of_messages_daily_avg_per_year(data, year=None):
+	year = year or datetime.date.today().year
+	lines = list(filter(
+		lambda i: i.date.year == year,
+		data.lines
+	))
+	amount_of_days = (lines[-1].date.date() - lines[0].date.date()).days
+	amount_of_messages = len(lines)
+	return amount_of_messages / amount_of_days
+
+
 
 if __name__ == '__main__':
 	input_file = [i[len("in:"   ):] for i in sys.argv[1:] if i.startswith("in:"   )]
