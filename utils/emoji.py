@@ -9,7 +9,7 @@ from collections import Counter
 ########## EMOJI DATA  ##########
 #################################
 
-EMOJI_FOLDER = os.path.expanduser("~/Projects/Whatsapp/emoji/images")
+EMOJI_FOLDER = os.path.expanduser("~/Projects/Whatsapp/utils/emoji/images")
 
 # depricated
 EMOJI_TYPES_DESCRIPTION = """
